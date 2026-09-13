@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Center 66dp area: x=21 to 87, y=21 to 87 -->
+    <!-- 3x3 Crossword cells pattern -->
+    <!-- Cell 1 (top-left, 30,30, 14x14) White -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M31,31 h14 v14 h-14 z" />
+    <!-- Cell 2 (top-mid, 47,31, 14x14) White -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47,31 h14 v14 h-14 z" />
+    <!-- Cell 3 (top-right, 63,31, 14x14) Dark/Black block -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M63,31 h14 v14 h-14 z" />
+
+    <!-- Cell 4 (mid-left, 31,47) Dark/Black block -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M31,47 h14 v14 h-14 z" />
+    <!-- Cell 5 (center, 47,47) White -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47,47 h14 v14 h-14 z" />
+    <!-- Cell 6 (mid-right, 63,47) White -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M63,47 h14 v14 h-14 z" />
+
+    <!-- Cell 7 (bottom-left, 31,63) White -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M31,63 h14 v14 h-14 z" />
+    <!-- Cell 8 (bottom-mid, 47,63) White -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47,63 h14 v14 h-14 z" />
+    <!-- Cell 9 (bottom-right, 63,63) White -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M63,63 h14 v14 h-14 z" />
+
+    <!-- Grid outer border -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:pathData="M29,29 h50 v50 h-50 z" />
+
+    <!-- Subtle letters in the white cells: 'C' in top-left, 'W' in center -->
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M41,35 h-5 v6 h5 v-1.5 h-3.2 v-3 h3.2 z" />
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M51,51 l1.2,6 h1.2 l1.1,-4.2 l1.1,4.2 h1.2 l1.2,-6 h-1.5 l-0.6,4.2 l-1.1,-4.2 h-0.8 l-1.1,4.2 l-0.6,-4.2 z" />
+    <!-- Number indicators in cells (little corner marks) -->
+    <path
+        android:fillColor="#2563EB"
+        android:pathData="M33,33 h2 v3 h-2 z M49,33 h2 v3 h-2 z M49,49 h2 v3 h-2 z M65,49 h2 v3 h-2 z M33,65 h2 v3 h-2 z" />
+</vector>

@@ -1,0 +1,6 @@
+{
+  "name": "Crossword Generator",
+  "description": "Generatore di cruciverba con algoritmo CSP, persistenza Room ed export PNG/PDF/SVG",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

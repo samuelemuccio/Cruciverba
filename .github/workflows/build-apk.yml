@@ -32,14 +32,33 @@ jobs:
           # Ensure .env file exists for Secrets Gradle Plugin
           if [ -f .env.example ]; then
             cp .env.example .env
-          else
+          elif [ ! -f .env ]; then
             touch .env
           fi
 
-          # Restore debug keystore from base64 if present
-          if [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
+          # Ensure debug.keystore exists (decode from base64 if present, or generate with keytool)
+          if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
+            if [ -f debug.keystore.base64 ] && [ -s debug.keystore.base64 ]; then
+              echo "Restoring debug.keystore from debug.keystore.base64..."
+              (base64 -d debug.keystore.base64 > debug.keystore) || (base64 --decode debug.keystore.base64 > debug.keystore) || true
+            fi
           fi
+
+          # Fallback: if debug.keystore is still missing, generate it with keytool
+          if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
+            echo "Generating debug.keystore using keytool..."
+            keytool -genkey -v -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          echo "Keystore verification:"
+          ls -la debug.keystore
 
           # Ensure gradlew has execution permissions
           chmod +x gradlew

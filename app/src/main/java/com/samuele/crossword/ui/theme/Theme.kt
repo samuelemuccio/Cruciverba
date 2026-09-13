@@ -7,15 +7,46 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF1E63D8),
-    secondary = Color(0xFF4A4A66),
-    tertiary = Color(0xFFD84A1E)
+private val DarkColorScheme = darkColorScheme(
+    primary = Ink300,
+    onPrimary = Ink900,
+    primaryContainer = Ink600,
+    onPrimaryContainer = Ink50,
+    secondary = Amber400,
+    onSecondary = Ink900,
+    secondaryContainer = Amber600,
+    onSecondaryContainer = Ink50,
+    tertiary = Mint300,
+    background = Ink900,
+    onBackground = Ink50,
+    surface = Ink800,
+    onSurface = Ink50,
+    surfaceVariant = Ink700,
+    onSurfaceVariant = Ink200,
+    surfaceContainer = Ink800,
+    surfaceContainerHigh = Ink700,
+    outline = Ink400
 )
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF9AC0FF),
-    secondary = Color(0xFFBFC2DD),
-    tertiary = Color(0xFFFFB59A)
+
+private val LightColorScheme = lightColorScheme(
+    primary = Ink500,
+    onPrimary = Color.White,
+    primaryContainer = Ink100,
+    onPrimaryContainer = Ink700,
+    secondary = Amber500,
+    onSecondary = Ink900,
+    secondaryContainer = Amber400,
+    onSecondaryContainer = Ink900,
+    tertiary = Mint300,
+    background = Color(0xFFFAF8FC),
+    onBackground = Ink900,
+    surface = Color.White,
+    onSurface = Ink900,
+    surfaceVariant = Ink50,
+    onSurfaceVariant = Ink700,
+    surfaceContainer = Color(0xFFF3EEF8),
+    surfaceContainerHigh = Color(0xFFEBE3F2),
+    outline = Ink300
 )
 
 @Composable
@@ -23,8 +54,10 @@ fun CrosswordTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
+    val scheme = if (darkTheme) DarkColorScheme else LightColorScheme
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = scheme,
+        typography = AppTypography,
         content = content
     )
 }

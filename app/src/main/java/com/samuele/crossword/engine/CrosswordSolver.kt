@@ -60,6 +60,81 @@ class CrosswordSolver(
         return result
     }
 
+    private fun timedOut(): Boolean =
+        System.currentTimeMillis() - startTime > timeout.inWholeMilliseconds
+
+    /**
+     * Genera fino a [limit] soluzioni DIVERSE.
+     * Ogni soluzione è trovata proseguendo il backtracking dopo la prima,
+     * così si ottengono varianti reali (non duplicati).
+     */
+    suspend fun solveAll(limit: Int = 20): List<CrosswordResult> {
+        val missingLengths = slots.map { it.length }.toSet()
+            .filter { (wordsByLength[it]?.size ?: 0) == 0 }
+        if (missingLengths.isNotEmpty()) {
+            return emptyList()
+        }
+
+        val results = mutableListOf<CrosswordResult>()
+        val seen = HashSet<String>()   // firma univoca per deduplicare
+
+        initState()
+        startTime = System.currentTimeMillis()
+
+        var pass = 0
+        while (results.size < limit && !timedOut() && pass < 5) {
+            pass++
+            backtrackCollect(seen, results, limit)
+            if (results.size >= limit) break
+        }
+
+        return results
+    }
+
+    private suspend fun backtrackCollect(
+        seen: MutableSet<String>,
+        out: MutableList<CrosswordResult>,
+        limit: Int
+    ): Boolean {
+        coroutineContext.ensureActive()
+        nodesVisited++
+        if (timedOut()) return false
+
+        val slotId = selectUnassigned()
+        if (slotId == -1) {
+            // Soluzione completa trovata
+            val signature = buildSignature()
+            if (signature !in seen) {
+                seen += signature
+                out += buildResult()
+            }
+            return out.size < limit
+        }
+
+        val candidates = domains[slotId].toMutableList()
+        // IMPORTANTE: shuffle per ottenere varianti diverse ad ogni run
+        candidates.shuffle()
+
+        for (candidate in candidates) {
+            if (out.size >= limit || timedOut()) return false
+            if (!isConsistent(slotId, candidate)) continue
+            assignment[slotId] = candidate
+            usedWords += candidate.word
+            val removed = forwardCheck(slotId, candidate)
+            if (removed != null) {
+                backtrackCollect(seen, out, limit)
+                restoreDomains(removed)
+            }
+            usedWords -= candidate.word
+            assignment[slotId] = null
+            if (out.size >= limit) return false
+        }
+        return out.size < limit
+    }
+
+    private fun buildSignature(): String =
+        slots.indices.joinToString("|") { assignment[it]?.word ?: "_" }
+
     suspend fun solve(): SolveOutcome {
         // Validazione preliminare
         val missingLengths = slots.map { it.length }.toSet()

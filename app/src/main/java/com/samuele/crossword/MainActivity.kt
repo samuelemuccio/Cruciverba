@@ -37,12 +37,17 @@ class MainActivity : ComponentActivity() {
                         return EditorViewModel(app.wordListRepository) as T
                     }
                 })
-                val resultVm: ResultViewModel = viewModel()
+                val resultVm: ResultViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return ResultViewModel(crosswordRepo = app.crosswordRepository) as T
+                    }
+                })
 
                 NavHost(navController = nav, startDestination = Routes.EDITOR) {
                     composable(Routes.EDITOR) {
-                        EditorScreen(vm = editorVm) { rows, cols, mask, words ->
-                            resultVm.generate(rows, cols, mask, words)
+                        EditorScreen(vm = editorVm) { words ->
+                            resultVm.generate(words)
                             nav.navigate(Routes.RESULT)
                         }
                     }
@@ -50,7 +55,7 @@ class MainActivity : ComponentActivity() {
                         ResultScreen(
                             vm = resultVm,
                             onExport = {
-                                currentResult = resultVm.state.value.result
+                                currentResult = resultVm.state.value.current
                                 nav.navigate(Routes.EXPORT)
                             },
                             onBack = { nav.popBackStack() }

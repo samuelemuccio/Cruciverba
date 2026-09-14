@@ -46,8 +46,8 @@ class MainActivity : ComponentActivity() {
 
                 NavHost(navController = nav, startDestination = Routes.EDITOR) {
                     composable(Routes.EDITOR) {
-                        EditorScreen(vm = editorVm) { words ->
-                            resultVm.generate(words)
+                        EditorScreen(vm = editorVm) { words, mysteryWord ->
+                            resultVm.generate(words, mysteryWord)
                             nav.navigate(Routes.RESULT)
                         }
                     }

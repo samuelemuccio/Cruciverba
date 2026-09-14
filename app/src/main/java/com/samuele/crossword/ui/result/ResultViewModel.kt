@@ -40,15 +40,20 @@ class ResultViewModel(
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
-    fun generate(words: List<WordClue>) {
+    fun generate(words: List<WordClue>, mysteryWord: WordClue? = null) {
         viewModelScope.launch {
             _state.value = State(loading = true, theme = _state.value.theme)
-            val reports = builder.buildVariationsStrict(words, maxSolutions = 30, requireAllWords = true)
+            val reports = builder.buildVariationsStrict(words, mysteryWord = mysteryWord, maxSolutions = 30, requireAllWords = true)
             val validResults = reports.mapNotNull { it.result }
 
             _state.value = if (validResults.isEmpty()) {
+                val errorMsg = if (mysteryWord != null) {
+                    "Impossibile formare incroci con la parola misteriosa '${mysteryWord.word}'.\nSuggerimento: assicurati che le altre parole abbiano lettere in comune con la parola misteriosa."
+                } else {
+                    "Nessuna combinazione possibile trovata.\nSuggerimento: per formare incroci, le parole devono avere almeno qualche lettera in comune (es. vocali A, E, I, O o consonanti frequenti)."
+                }
                 State(
-                    error = "Nessuna combinazione possibile trovata.\nSuggerimento: per formare incroci, le parole devono avere almeno qualche lettera in comune (es. vocali A, E, I, O o consonanti frequenti).",
+                    error = errorMsg,
                     theme = _state.value.theme
                 )
             } else {

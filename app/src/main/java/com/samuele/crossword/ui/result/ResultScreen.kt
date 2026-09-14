@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -224,6 +226,17 @@ fun ResultScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                     )
+
+                    // Card Parola Cardine Misteriosa (se presente nello schema)
+                    if (currentResult.mysteryInfo != null) {
+                        MysteryWordEnigmaCard(
+                            result = currentResult,
+                            showGlobalSolution = s.showSolution,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                        )
+                    }
 
                     // Sezione Definizioni con Segmented Control orizzontali/verticali
                     ClueSection(
@@ -483,6 +496,7 @@ fun ClueSection(
                         val wordClue = result.assignments[slot.id]
                         val clue = wordClue?.clue ?: "—"
                         val word = wordClue?.word ?: ""
+                        val isMystery = (slot.id == result.mysteryInfo?.slotId)
 
                         Row(
                             modifier = Modifier
@@ -493,8 +507,11 @@ fun ClueSection(
                             // Badge numerico circolare con fondo scuro semi-trasparente e bordo 1px
                             Surface(
                                 shape = CircleShape,
-                                color = Color(0xFF1E2336),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                                color = if (isMystery) Color(0xFFF59E0B).copy(alpha = 0.22f) else Color(0xFF1E2336),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isMystery) Color(0xFFF59E0B).copy(alpha = 0.6f) else Color.White.copy(alpha = 0.14f)
+                                ),
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -502,7 +519,7 @@ fun ClueSection(
                                         text = "${slot.number}",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = if (isMystery) Color(0xFFFBBF24) else Color.White
                                     )
                                 }
                             }
@@ -510,6 +527,22 @@ fun ClueSection(
                             Spacer(Modifier.width(12.dp))
 
                             Column(modifier = Modifier.weight(1f)) {
+                                if (isMystery) {
+                                    Surface(
+                                        shape = RoundedCornerShape(5.dp),
+                                        color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.45f)),
+                                        modifier = Modifier.padding(bottom = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = "🔑 PAROLA MISTERIOSA CARDINE",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFFFBBF24),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = clue,
                                     style = MaterialTheme.typography.bodyMedium,
@@ -522,7 +555,7 @@ fun ClueSection(
                                         text = "Soluzione: $word",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = RoyalIndigo
+                                        color = if (isMystery) Color(0xFFFBBF24) else RoyalIndigo
                                     )
                                 }
                             }
@@ -626,3 +659,220 @@ fun ErrorView(
         }
     }
 }
+
+@Composable
+fun MysteryWordEnigmaCard(
+    result: CrosswordResult,
+    showGlobalSolution: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val info = result.mysteryInfo ?: return
+    var manuallyRevealed by remember(result) { mutableStateOf(false) }
+    val isRevealed = showGlobalSolution || manuallyRevealed
+
+    GlassmorphicCard(
+        shape = RoundedCornerShape(22.dp),
+        backgroundColor = Color(0xFF161520).copy(alpha = 0.95f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.2.dp,
+            Brush.horizontalGradient(
+                listOf(
+                    Color(0xFFF59E0B).copy(alpha = 0.7f),
+                    Color(0xFFD97706).copy(alpha = 0.4f),
+                    Color(0xFFFBBF24).copy(alpha = 0.7f)
+                )
+            )
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("mystery_enigma_card")
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Column {
+                        Text(
+                            text = "PAROLA MISTERIOSA CARDINE",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFBBF24),
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = info.clue.ifBlank { "Risolvi gli incroci per dedurre la parola segreta!" },
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            ),
+                            maxLines = 2
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFF59E0B).copy(alpha = 0.18f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f))
+                ) {
+                    Text(
+                        text = "${info.revealedCount}/${info.totalLetters} incrociate",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFBBF24),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Barra tessere geometriche squadrate (90° netti, fedeli all'estetica quadrata del cruciverba)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    info.word.forEachIndexed { index, char ->
+                        val isIntersected = info.intersectedIndices.contains(index)
+                        val shouldShowLetter = isRevealed || isIntersected
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = when {
+                                    isIntersected -> Color(0xFFFFFBEB)
+                                    isRevealed -> Color(0xFF1E2234)
+                                    else -> Color(0xFF12141F)
+                                },
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.5.dp,
+                                    if (isIntersected) Color(0xFFD97706) else Color.White.copy(alpha = 0.2f)
+                                ),
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    if (shouldShowLetter) {
+                                        Text(
+                                            text = char.toString(),
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isIntersected) Color(0xFF92400E) else Color.White
+                                            )
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "?",
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = SlateTextSecondary.copy(alpha = 0.6f)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Micro-etichetta di stato
+                            Text(
+                                text = if (isIntersected) "incrocio" else "deduzione",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                color = if (isIntersected) Color(0xFFFBBF24) else SlateTextSecondary.copy(alpha = 0.7f),
+                                fontWeight = if (isIntersected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Descrizione pedagogica della meccanica
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color.White.copy(alpha = 0.04f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lightbulb,
+                        contentDescription = null,
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = if (info.revealedCount == info.totalLetters) {
+                            "Tutte le lettere di '${info.word}' si incrociano con le altre parole dello schema!"
+                        } else {
+                            val missing = info.totalLetters - info.revealedCount
+                            "${info.revealedCount} lettere si compongono dagli incroci. Le rimanenti $missing si deducono dalla definizione!"
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
+                        color = Color.White.copy(alpha = 0.82f)
+                    )
+                }
+            }
+
+            // Pulsante azione per svelare / nascondere
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(
+                    onClick = { manuallyRevealed = !manuallyRevealed },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (manuallyRevealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = null,
+                        tint = Color(0xFFFBBF24),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = if (manuallyRevealed) "Nascondi lettere da dedurre" else "Svela parola segreta",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFBBF24)
+                    )
+                }
+            }
+        }
+    }
+}
+

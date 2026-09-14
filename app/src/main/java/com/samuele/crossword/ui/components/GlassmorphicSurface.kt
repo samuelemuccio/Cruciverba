@@ -26,17 +26,30 @@ fun GlassmorphicCard(
     shape: Shape = RoundedCornerShape(20.dp),
     backgroundColor: Color = Color(0xFF131622).copy(alpha = 0.78f),
     elevation: Dp = 4.dp,
+    border: BorderStroke? = null,
     content: @Composable () -> Unit
 ) {
-    val borderGradient = Brush.linearGradient(
+    val defaultBorderGradient = Brush.linearGradient(
         colors = listOf(
             Color.White.copy(alpha = 0.14f),
             Color.White.copy(alpha = 0.02f)
         )
     )
 
-    Surface(
-        modifier = modifier
+    val appliedModifier = if (border != null) {
+        modifier
+            .shadow(
+                elevation = elevation,
+                shape = shape,
+                ambientColor = Color.Black.copy(alpha = 0.5f),
+                spotColor = Color.Black.copy(alpha = 0.6f)
+            )
+            .border(
+                border = border,
+                shape = shape
+            )
+    } else {
+        modifier
             .shadow(
                 elevation = elevation,
                 shape = shape,
@@ -45,9 +58,13 @@ fun GlassmorphicCard(
             )
             .border(
                 width = 1.dp,
-                brush = borderGradient,
+                brush = defaultBorderGradient,
                 shape = shape
-            ),
+            )
+    }
+
+    Surface(
+        modifier = appliedModifier,
         shape = shape,
         color = backgroundColor,
         tonalElevation = 0.dp

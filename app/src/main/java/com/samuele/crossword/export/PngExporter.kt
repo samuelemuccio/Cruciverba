@@ -79,6 +79,22 @@ object PngExporter {
             }
         }
 
+        // Coordinate delle celle appartenenti alla parola cardine misteriosa
+        val mysteryCells = HashSet<Pair<Int, Int>>()
+        result.mysteryInfo?.let { minfo ->
+            mysteryCells.addAll(minfo.cells)
+        }
+
+        val fillMystery = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(255, 251, 235) // Crema dorato
+            style = Paint.Style.FILL
+        }
+
+        val mysteryDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(245, 158, 11) // Ambra
+            style = Paint.Style.FILL
+        }
+
         // Disegna SOLO i quadrati che appartengono al cruciverba (whiteCells == true)
         for (r in 0 until result.rows) {
             for (c in 0 until result.cols) {
@@ -87,14 +103,25 @@ object PngExporter {
                     val top = padding + r * cell
                     val right = left + cell
                     val bottom = top + cell
+                    val isMystery = (r to c) in mysteryCells
 
-                    // Se richiesto lo sfondo bianco delle celle, altrimenti resta 100% trasparente
+                    // Se richiesto lo sfondo delle celle
                     if (!options.transparentCells) {
-                        canvas.drawRect(left, top, right, bottom, fillWhite)
+                        if (isMystery) {
+                            canvas.drawRect(left, top, right, bottom, fillMystery)
+                        } else {
+                            canvas.drawRect(left, top, right, bottom, fillWhite)
+                        }
                     }
 
                     // Bordo netto del quadrato
                     canvas.drawRect(left, top, right, bottom, borderPaint)
+
+                    // Se parola misteriosa, disegna un dischetto dorato discreto in alto a destra
+                    if (isMystery) {
+                        val dotR = (cell * 0.08f).coerceIn(2f, 8f)
+                        canvas.drawCircle(right - cell * 0.16f, top + cell * 0.16f, dotR, mysteryDotPaint)
+                    }
 
                     // Numeretto nell'angolo in alto a sinistra
                     val number = numberedCells[r to c]

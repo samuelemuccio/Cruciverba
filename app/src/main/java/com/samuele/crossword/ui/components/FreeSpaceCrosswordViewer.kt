@@ -90,22 +90,43 @@ fun FreeSpaceCrosswordViewer(
                     )
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
-                        contentDescription = null,
-                        tint = Color(0xFF9EA3AE),
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Text(
-                        text = "${result.assignments.size} parole (${densityPct}% densità)",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF9EA3AE)
-                    )
+                if (result.mysteryInfo != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFF59E0B).copy(alpha = 0.16f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "🔑 Cardine: ${result.mysteryInfo.revealedCount}/${result.mysteryInfo.totalLetters} incroci",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFBBF24)
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF9EA3AE),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = "${result.assignments.size} parole (${densityPct}% densità)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF9EA3AE)
+                        )
+                    }
                 }
             }
 

@@ -32,6 +32,20 @@ data class Slot(
     fun cellAt(idx: Int, cols: Int): Cell = Cell(cells[idx] / cols, cells[idx] % cols)
 }
 
+data class MysteryWordInfo(
+    val word: String,
+    val clue: String,
+    val slotId: Int? = null,
+    val slotNumber: Int? = null,
+    val direction: Direction = Direction.ACROSS,
+    val cells: List<Pair<Int, Int>> = emptyList(),
+    val intersectedIndices: List<Int> = emptyList() // indici delle lettere (0..length-1) incrociate con altre parole
+) {
+    val totalLetters: Int get() = word.length
+    val revealedCount: Int get() = intersectedIndices.size
+    val deductionCount: Int get() = (totalLetters - revealedCount).coerceAtLeast(0)
+}
+
 /** Risultato completo: griglia + slots numerati + definizioni. */
 data class CrosswordResult(
     val rows: Int,
@@ -41,7 +55,8 @@ data class CrosswordResult(
     val slots: List<Slot>,                   // con number popolato
     val assignments: Map<Int, WordClue>,     // slotId -> WordClue
     val unsolvedSlotIds: Set<Int>,           // slot che non hanno trovato parola
-    val complete: Boolean
+    val complete: Boolean,
+    val mysteryInfo: MysteryWordInfo? = null
 )
 
 sealed class SolveOutcome {

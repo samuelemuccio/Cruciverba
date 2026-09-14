@@ -64,7 +64,7 @@ import kotlin.math.roundToInt
 @Composable
 fun EditorScreen(
     vm: EditorViewModel,
-    onGenerate: (words: List<WordClue>) -> Unit
+    onGenerate: (words: List<WordClue>, mysteryWord: WordClue?) -> Unit
 ) {
     val s by vm.state.collectAsState()
     val focusManager = LocalFocusManager.current
@@ -158,9 +158,14 @@ fun EditorScreen(
         bottomBar = {
             IosGenerateBottomDock(
                 wordCount = s.words.size,
+                isMysteryMode = s.mysteryWordEnabled,
+                mysteryWord = s.mysteryWord,
                 onGenerate = {
                     focusManager.clearFocus()
-                    onGenerate(s.words.map { WordClue(it.word, it.clue) })
+                    val mystery = if (s.mysteryWordEnabled && s.mysteryWord.length >= 2) {
+                        WordClue(s.mysteryWord, s.mysteryClue.ifBlank { "Parola misteriosa da svelare" })
+                    } else null
+                    onGenerate(s.words.map { WordClue(it.word, it.clue) }, mystery)
                 }
             )
         },
@@ -177,6 +182,18 @@ fun EditorScreen(
             item(key = "ai_hero_card") {
                 IosAiHeroCard(
                     onOpenAiSheet = { showAiSheet = true }
+                )
+            }
+
+            // Parola Cardine Misteriosa Card (richiesta dall'utente per comporre il cruciverba attorno ad essa)
+            item(key = "mystery_word_card") {
+                IosMysteryWordCard(
+                    enabled = s.mysteryWordEnabled,
+                    mysteryWord = s.mysteryWord,
+                    mysteryClue = s.mysteryClue,
+                    onToggle = vm::toggleMysteryMode,
+                    onWordChange = vm::onMysteryWordChange,
+                    onClueChange = vm::onMysteryClueChange
                 )
             }
 
@@ -858,10 +875,256 @@ private fun IosOrphanWarningCard(orphanWords: List<WordClue>) {
 }
 
 @Composable
+private fun IosMysteryWordCard(
+    enabled: Boolean,
+    mysteryWord: String,
+    mysteryClue: String,
+    onToggle: (Boolean) -> Unit,
+    onWordChange: (String) -> Unit,
+    onClueChange: (String) -> Unit
+) {
+    GlassmorphicCard(
+        shape = RoundedCornerShape(22.dp),
+        backgroundColor = if (enabled) Color(0xFF181720).copy(alpha = 0.95f) else Color(0xFF141724).copy(alpha = 0.85f),
+        border = BorderStroke(
+            1.2.dp,
+            if (enabled) Brush.horizontalGradient(
+                listOf(Color(0xFFF59E0B).copy(alpha = 0.75f), Color(0xFFD97706).copy(alpha = 0.5f), Color(0xFFFBBF24).copy(alpha = 0.75f))
+            ) else Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.04f)))
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("mystery_word_card")
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (enabled) Color(0xFFF59E0B).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = if (enabled) Color(0xFFF59E0B) else SlateTextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Parola Misteriosa",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (enabled) Color(0xFFFBBF24) else Color.White
+                            )
+                            Surface(
+                                shape = CircleShape,
+                                color = if (enabled) Color(0xFFF59E0B).copy(alpha = 0.25f) else Color.White.copy(alpha = 0.08f)
+                            ) {
+                                Text(
+                                    text = if (enabled) "ATTIVA" else "OPZIONALE",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (enabled) Color(0xFFFBBF24) else SlateTextSecondary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Cruciverba imperniato su una parola cardine",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                            color = SlateTextSecondary
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFFF59E0B),
+                        uncheckedThumbColor = SlateTextSecondary,
+                        uncheckedTrackColor = Color(0xFF222634)
+                    ),
+                    modifier = Modifier.testTag("toggle_mystery_mode")
+                )
+            }
+
+            AnimatedVisibility(visible = enabled) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Text(
+                        text = "Inserisci la parola cardine: lo schema si comporrà incrociando le sue lettere. Le lettere che non si incrociano dovranno essere dedotte con l'indizio!",
+                        style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
+                        color = Color.White.copy(alpha = 0.75f)
+                    )
+
+                    // Campo Parola Cardine
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF10121C),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                    ) {
+                        BasicTextField(
+                            value = mysteryWord,
+                            onValueChange = onWordChange,
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFFBBF24),
+                                letterSpacing = 1.2.sp
+                            ),
+                            cursorBrush = SolidColor(Color(0xFFF59E0B)),
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Characters,
+                                imeAction = ImeAction.Next
+                            ),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                .testTag("input_mystery_word"),
+                            decorationBox = { inner ->
+                                Box(contentAlignment = Alignment.CenterStart) {
+                                    if (mysteryWord.isEmpty()) {
+                                        Text(
+                                            "Parola segreta (es. ITALIA, AMORE, ESTATE)",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = SlateTextSecondary.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                    inner()
+                                }
+                            }
+                        )
+                    }
+
+                    // Campo Indizio o Enigma
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF10121C),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                    ) {
+                        BasicTextField(
+                            value = mysteryClue,
+                            onValueChange = onClueChange,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = Color.White,
+                                lineHeight = 18.sp
+                            ),
+                            cursorBrush = SolidColor(RoyalIndigo),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                .testTag("input_mystery_clue"),
+                            decorationBox = { inner ->
+                                Box(contentAlignment = Alignment.TopStart) {
+                                    if (mysteryClue.isEmpty()) {
+                                        Text(
+                                            "Indizio o enigma misterioso da risolvere...",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = SlateTextSecondary.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                    inner()
+                                }
+                            }
+                        )
+                    }
+
+                    // Anteprima geometrica netta e squadrata delle lettere della parola misteriosa
+                    if (mysteryWord.isNotBlank()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Composizione:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SlateTextSecondary,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                mysteryWord.forEach { char ->
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFF59E0B).copy(alpha = 0.18f),
+                                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.7f)),
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = char.toString(),
+                                                style = MaterialTheme.typography.labelLarge.copy(
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFFFBBF24)
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun IosGenerateBottomDock(
     wordCount: Int,
+    isMysteryMode: Boolean,
+    mysteryWord: String,
     onGenerate: () -> Unit
 ) {
+    val canGenerate = if (isMysteryMode) {
+        wordCount >= 2 && mysteryWord.length >= 2
+    } else {
+        wordCount >= 2
+    }
+
+    val buttonText = when {
+        isMysteryMode && mysteryWord.length < 2 -> "Inserisci la parola misteriosa"
+        isMysteryMode -> "Genera con Parola Cardine ($wordCount parole)"
+        wordCount < 2 -> "Aggiungi almeno 2 parole"
+        else -> "Genera Cruciverba ($wordCount parole)"
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
@@ -874,10 +1137,10 @@ private fun IosGenerateBottomDock(
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             PremiumButton(
-                text = if (wordCount < 2) "Aggiungi almeno 2 parole" else "Genera Cruciverba ($wordCount parole)",
-                icon = Icons.Default.AutoAwesome,
+                text = buttonText,
+                icon = if (isMysteryMode) Icons.Default.Key else Icons.Default.AutoAwesome,
                 onClick = onGenerate,
-                enabled = wordCount >= 2,
+                enabled = canGenerate,
                 variant = ButtonVariant.Primary,
                 modifier = Modifier
                     .fillMaxWidth()

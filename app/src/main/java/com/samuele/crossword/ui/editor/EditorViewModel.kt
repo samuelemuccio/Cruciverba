@@ -39,7 +39,10 @@ data class EditorState(
     val savedLists: List<WordListEntity> = emptyList(),
     val analysis: AnalysisResult = AnalysisResult(10, emptyList(), true),
     val editingWord: WordEntry? = null,
-    val toastMessage: String? = null
+    val toastMessage: String? = null,
+    val mysteryWordEnabled: Boolean = false,
+    val mysteryWord: String = "",
+    val mysteryClue: String = ""
 )
 
 class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
@@ -70,6 +73,18 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
 
     fun onDraftClueChange(s: String) = _state.update {
         it.copy(draftClue = s)
+    }
+
+    fun toggleMysteryMode(enabled: Boolean) = _state.update {
+        it.copy(mysteryWordEnabled = enabled)
+    }
+
+    fun onMysteryWordChange(s: String) = _state.update {
+        it.copy(mysteryWord = WordClue.normalize(s))
+    }
+
+    fun onMysteryClueChange(s: String) = _state.update {
+        it.copy(mysteryClue = s)
     }
 
     fun addWord() {

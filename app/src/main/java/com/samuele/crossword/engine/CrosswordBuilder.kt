@@ -57,7 +57,7 @@ data class BuiltCrossword(
     }
 
     /** Converte in CrosswordResult per la UI e l'esportazione. */
-    fun toResult(): CrosswordResult {
+    fun toResult(mysteryWord: WordClue? = null): CrosswordResult {
         val grid = CrosswordGrid(rows, cols, whiteCells)
         val rawSlots = grid.extractSlots()
         val numbered = Numbering.assignNumbers(grid, rawSlots)
@@ -75,6 +75,32 @@ data class BuiltCrossword(
             }
         }
 
+        val mysteryInfo = if (mysteryWord != null) {
+            val norm = WordClue.normalize(mysteryWord.word)
+            val mPlaced = placed.firstOrNull { it.word == norm }
+            if (mPlaced != null) {
+                val mCells = mPlaced.cells()
+                val intersected = mutableListOf<Int>()
+                for (i in 0 until mPlaced.word.length) {
+                    val coord = mCells[i]
+                    val hasCross = placed.any { pw -> pw != mPlaced && pw.cells().contains(coord) }
+                    if (hasCross) intersected += i
+                }
+                val mSlot = numbered.firstOrNull { s ->
+                    s.direction == mPlaced.direction && s.row == mPlaced.row && s.col == mPlaced.col && s.length == mPlaced.word.length
+                }
+                MysteryWordInfo(
+                    word = norm,
+                    clue = mysteryWord.clue,
+                    slotId = mSlot?.id,
+                    slotNumber = mSlot?.number,
+                    direction = mPlaced.direction,
+                    cells = mCells,
+                    intersectedIndices = intersected
+                )
+            } else null
+        } else null
+
         return CrosswordResult(
             rows = rows,
             cols = cols,
@@ -83,7 +109,8 @@ data class BuiltCrossword(
             slots = numbered,
             assignments = assignments,
             unsolvedSlotIds = numbered.filter { it.id !in assignments }.map { it.id }.toSet(),
-            complete = numbered.all { it.id in assignments }
+            complete = numbered.all { it.id in assignments },
+            mysteryInfo = mysteryInfo
         )
     }
 }
@@ -94,7 +121,8 @@ data class BuildReport(
     val placedWords: List<String>,
     val unplacedWords: List<WordClue>,
     val complete: Boolean,
-    val aestheticScore: AestheticScore? = crossword?.aestheticScore
+    val aestheticScore: AestheticScore? = crossword?.aestheticScore,
+    val mysteryInfo: MysteryWordInfo? = result?.mysteryInfo
 )
 
 /**
@@ -161,10 +189,23 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
      */
      suspend fun buildVariationsStrict(
          words: List<WordClue>,
+         mysteryWord: WordClue? = null,
          maxSolutions: Int = 30,
          requireAllWords: Boolean = true
      ): List<BuildReport> = withContext(Dispatchers.Default) {
-         val unique = words
+         val normMystery = mysteryWord?.let {
+             val clean = WordClue.normalize(it.word)
+             if (clean.length >= 2) WordClue(clean, it.clue.ifBlank { "Parola misteriosa da svelare" }) else null
+         }
+
+         val combinedWords = if (normMystery != null) {
+             val filtered = words.filterNot { WordClue.normalize(it.word) == normMystery.word }
+             listOf(normMystery) + filtered
+         } else {
+             words
+         }
+
+         val unique = combinedWords
              .map { it.copy(word = WordClue.normalize(it.word)) }
              .distinctBy { it.word }
              .filter { it.word.length >= 2 && it.word.all { c -> c in 'A'..'Z' } }
@@ -182,8 +223,6 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
          // Ordina le parole in base al loro potenziale di incrocio
          val wordsByPotential = unique.sortedByDescending { potentialMap[it] ?: 0f }
 
-         // Limiti dimensionali: proviamo sia un limite stretto (comprime la griglia forzando incroci)
-         // che un limite standard per dare respiro
          val maxWordLen = unique.maxOf { it.word.length }
          val totalChars = unique.sumOf { it.word.length }
          val tightLimit = max(11, max(maxWordLen + 2, (sqrt(totalChars.toDouble()) * 1.50).toInt()))
@@ -192,19 +231,25 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
          val completedCrosswords = mutableListOf<BuiltCrossword>()
          val signatures = HashSet<String>()
 
-         fun addSolution(sol: BuiltCrossword) {
-             if (sol.placed.size == totalWords && sol.aspectRatioFactor <= 2.05f) {
-                 val sig = signature(sol)
-                 if (sig !in signatures) {
-                     signatures += sig
-                     completedCrosswords += sol
+         fun addSolution(sol: BuiltCrossword, minSize: Int = if (requireAllWords) totalWords else 3) {
+             if (sol.placed.size >= minSize && sol.aspectRatioFactor <= 2.15f) {
+                 if (normMystery == null || sol.placed.any { it.word == normMystery.word }) {
+                     val sig = signature(sol)
+                     if (sig !in signatures) {
+                         signatures += sig
+                         completedCrosswords += sol
+                     }
                  }
              }
          }
 
-         // 2. FASE 1: BEAM SEARCH AD ALTA DENSITÀ CON SELEZIONE MULTIPLA DI ANCORAGGI
-         // Esploriamo sia il limite stretto (massima densità) che quello standard con beam ampio
-         val candidateAnchors = wordsByPotential.take(min(8, wordsByPotential.size))
+         // 2. FASE 1: BEAM SEARCH AD ALTA DENSITÀ CON SELEZIONE ANCORAGGIO
+         // Se c'è la parola misteriosa, essa diventa l'ancoraggio obbligatorio al centro
+         val candidateAnchors = if (normMystery != null) {
+             listOf(normMystery)
+         } else {
+             wordsByPotential.take(min(8, wordsByPotential.size))
+         }
 
          for (limit in listOf(tightLimit, standardLimit)) {
              for (anchor in candidateAnchors) {
@@ -216,7 +261,9 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                          allWords = unique,
                          potentialMap = potentialMap,
                          maxSideLimit = limit,
-                         beamWidth = 140
+                         beamWidth = 140,
+                         anchorBonusWord = normMystery?.word,
+                         allowPartial = false
                      )
 
                      for (sol in solutionsFromBeam) {
@@ -230,17 +277,20 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
              if (completedCrosswords.size >= maxSolutions * 2) break
          }
 
-         // 3. FASE 2: RIPETIZIONI ITERATIVE MULTI-START PER MASSIMA QUALITÀ E INCROCI
-         // L'algoritmo effettua n ripetizioni stocastiche per raggiungere la massima densità
+         // 3. FASE 2: RIPETIZIONI ITERATIVE MULTI-START
          var restarts = 0
-         val maxRestarts = 160
-         val minTargetCrossings = totalWords // vogliamo superare l'albero semplice N-1
+         val maxRestarts = if (normMystery != null) 90 else 160
+         val minTargetCrossings = totalWords
 
          while (restarts < maxRestarts) {
              coroutineContext.ensureActive()
              restarts++
 
-             val anchor = wordsByPotential.take(min(7, wordsByPotential.size)).random(random)
+             val anchor = if (normMystery != null) {
+                 normMystery
+             } else {
+                 wordsByPotential.take(min(7, wordsByPotential.size)).random(random)
+             }
              val anchorDir = if (random.nextBoolean()) Direction.ACROSS else Direction.DOWN
              val remaining = unique.filter { it.word != anchor.word }.shuffled(random)
 
@@ -258,36 +308,72 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
              }
 
              val bestIntersections = completedCrosswords.maxOfOrNull { it.totalIntersections } ?: 0
-             if (completedCrosswords.size >= maxSolutions * 3 && bestIntersections > minTargetCrossings && restarts >= 60) {
+             if (completedCrosswords.size >= maxSolutions * 3 && bestIntersections > minTargetCrossings && restarts >= 50) {
                  break
+             }
+         }
+
+         // Fallback se nessuna soluzione completa è stata trovata con la parola misteriosa:
+         // accetta soluzioni con il maggior numero possibile di parole incrociate
+         if (completedCrosswords.isEmpty() && normMystery != null) {
+             for (dir in listOf(Direction.ACROSS, Direction.DOWN)) {
+                 coroutineContext.ensureActive()
+                 val partials = runBeamSearch(
+                     anchor = normMystery,
+                     anchorDir = dir,
+                     allWords = unique,
+                     potentialMap = potentialMap,
+                     maxSideLimit = standardLimit + 2,
+                     beamWidth = 160,
+                     anchorBonusWord = normMystery.word,
+                     allowPartial = true
+                 )
+                 for (p in partials) {
+                     addSolution(p, minSize = 3)
+                 }
              }
          }
 
          // 4. VALUTAZIONE ESTETICA GEOMETRICA E ORDINAMENTO RIGOROSO
          val scoredReports = completedCrosswords.map { cw ->
              val aesthetic = cw.aestheticScore
+             val result = cw.toResult(normMystery)
+             val placedSet = cw.placed.map { it.word }.toSet()
+             val unplaced = unique.filter { it.word !in placedSet }
              BuildReport(
                  crossword = cw,
-                 result = cw.toResult(),
+                 result = result,
                  placedWords = cw.placed.map { it.word },
-                 unplacedWords = emptyList(),
-                 complete = true,
-                 aestheticScore = aesthetic
+                 unplacedWords = unplaced,
+                 complete = unplaced.isEmpty(),
+                 aestheticScore = aesthetic,
+                 mysteryInfo = result.mysteryInfo
              )
          }
 
-         // Ordina rigorosamente per punteggio estetico matematico dell'Optimizer (incroci + densità)
-         scoredReports
-             .sortedByDescending { it.aestheticScore?.totalScore ?: Float.NEGATIVE_INFINITY }
-             .take(maxSolutions)
+         // Ordina con preferenza per numero di parole posizionate, incroci della parola misteriosa ed estetica
+         if (normMystery != null) {
+             scoredReports
+                 .sortedWith(
+                     compareByDescending<BuildReport> { it.placedWords.size }
+                         .thenByDescending { it.mysteryInfo?.revealedCount ?: 0 }
+                         .thenByDescending { it.aestheticScore?.totalScore ?: Float.NEGATIVE_INFINITY }
+                 )
+                 .take(maxSolutions)
+         } else {
+             scoredReports
+                 .sortedByDescending { it.aestheticScore?.totalScore ?: Float.NEGATIVE_INFINITY }
+                 .take(maxSolutions)
+         }
      }
 
     suspend fun buildVariations(
         words: List<WordClue>,
+        mysteryWord: WordClue? = null,
         maxSolutions: Int = 20,
         minWordsUsed: Int = 2
     ): List<BuiltCrossword> {
-        val reports = buildVariationsStrict(words, maxSolutions, requireAllWords = true)
+        val reports = buildVariationsStrict(words, mysteryWord, maxSolutions, requireAllWords = true)
         return reports.mapNotNull { it.crossword }
     }
 
@@ -302,7 +388,9 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         allWords: List<WordClue>,
         potentialMap: Map<WordClue, Float>,
         maxSideLimit: Int,
-        beamWidth: Int
+        beamWidth: Int,
+        anchorBonusWord: String? = null,
+        allowPartial: Boolean = false
     ): List<BuiltCrossword> {
         val initialMap = HashMap<Long, Char>()
         anchor.word.forEachIndexed { i, ch ->
@@ -356,7 +444,8 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                         placed = state.placed,
                         bbox = state.bbox,
                         word = candidate.word,
-                        maxSideLimit = maxSideLimit
+                        maxSideLimit = maxSideLimit,
+                        anchorBonusWord = anchorBonusWord
                     )
 
                     if (placements.isNotEmpty()) {
@@ -442,6 +531,13 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                 .take(beamWidth)
         }
 
+        if (allowPartial && results.isEmpty()) {
+            val partials = beam.filter { it.placed.size >= 3 }.sortedByDescending { it.placed.size }
+            for (p in partials.take(15)) {
+                results += trim(p.placed, p.cellMap)
+            }
+        }
+
         return results
     }
 
@@ -458,7 +554,8 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         placed: List<PlacedWord>,
         bbox: BoundingBox,
         word: String,
-        maxSideLimit: Int
+        maxSideLimit: Int,
+        anchorBonusWord: String? = null
     ): List<CandidatePlacement> {
         val out = mutableListOf<CandidatePlacement>()
         val visited = HashSet<GridPosKey>()
@@ -487,7 +584,9 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                         col = startCol,
                         dir = newDir,
                         maxSideLimit = maxSideLimit,
-                        placedCount = placed.size
+                        placedCount = placed.size,
+                        placed = placed,
+                        anchorBonusWord = anchorBonusWord
                     )
                     if (candidate != null) {
                         out += candidate
@@ -509,7 +608,9 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         col: Int,
         dir: Direction,
         maxSideLimit: Int,
-        placedCount: Int
+        placedCount: Int,
+        placed: List<PlacedWord> = emptyList(),
+        anchorBonusWord: String? = null
     ): CandidatePlacement? {
         // Cella subito prima e subito dopo devono essere vuote
         val beforeR = if (dir == Direction.ACROSS) row else row - 1
@@ -592,7 +693,24 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         val distToCenter = sqrt((wordMidR - centerR) * (wordMidR - centerR) + (wordMidC - centerC) * (wordMidC - centerC))
         val centerPenalty = distToCenter * 12f
 
-        val stepScore = intersectionPoints + interiorFitBonus - expansionPenalty - aspectPenalty - centerPenalty
+        // Bonus sostanziale per chi incrocia la parola cardine misteriosa
+        val anchorBonus = if (anchorBonusWord != null && placed.isNotEmpty()) {
+            val anchorPlaced = placed.firstOrNull { it.word == anchorBonusWord }
+            if (anchorPlaced != null) {
+                val aCells = anchorPlaced.cells()
+                var anchorCrosses = 0
+                for (i in word.indices) {
+                    val r = if (dir == Direction.ACROSS) row else row + i
+                    val c = if (dir == Direction.ACROSS) col + i else col
+                    if (anchorPlaced.cells().contains(r to c)) {
+                        anchorCrosses++
+                    }
+                }
+                anchorCrosses * 2400f
+            } else 0f
+        } else 0f
+
+        val stepScore = intersectionPoints + interiorFitBonus + anchorBonus - expansionPenalty - aspectPenalty - centerPenalty
 
         return CandidatePlacement(
             row = row,

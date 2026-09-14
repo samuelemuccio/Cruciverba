@@ -41,6 +41,10 @@ fun CrosswordGridView(
         map
     }
 
+    val mysteryCells = remember(result.mysteryInfo) {
+        result.mysteryInfo?.cells?.toSet() ?: emptySet()
+    }
+
     // Transizione pulita e discreta di opacità al cambio di variante (niente tessere che scivolano o sformano la griglia)
     val gridAlpha = remember { Animatable(1f) }
     LaunchedEffect(result) {
@@ -125,22 +129,43 @@ fun CrosswordGridView(
                 val topLeft = Offset(left, top)
 
                 val isWhite = result.whiteCells[r][c]
+                val isMystery = (r to c) in mysteryCells
 
                 if (isWhite) {
-                    // Cella Bianca del Cruciverba: quadrato netto con riempimento bianco e bordo nero preciso
-                    drawRect(
-                        color = Color.White.copy(alpha = currentAlpha),
-                        topLeft = topLeft,
-                        size = cellSize
-                    )
-
-                    // Bordo squadrato netto della casella
-                    drawRect(
-                        color = Color(0xFF1E2230).copy(alpha = currentAlpha),
-                        topLeft = topLeft,
-                        size = cellSize,
-                        style = Stroke(width = strokeW)
-                    )
+                    if (isMystery) {
+                        // Cella della Parola Cardine Misteriosa: fondo crema/dorato con bordo ambra netto
+                        drawRect(
+                            color = Color(0xFFFFFBEB).copy(alpha = currentAlpha),
+                            topLeft = topLeft,
+                            size = cellSize
+                        )
+                        drawRect(
+                            color = Color(0xFFD97706).copy(alpha = currentAlpha),
+                            topLeft = topLeft,
+                            size = cellSize,
+                            style = Stroke(width = strokeW * 1.25f)
+                        )
+                        // Indicatore dorato nell'angolino in alto a destra
+                        val dotRadius = (cell * 0.08f).coerceIn(2.5f, 6f)
+                        drawCircle(
+                            color = Color(0xFFF59E0B).copy(alpha = currentAlpha),
+                            radius = dotRadius,
+                            center = Offset(left + cell - cell * 0.16f, top + cell * 0.16f)
+                        )
+                    } else {
+                        // Cella Bianca del Cruciverba: quadrato netto con riempimento bianco e bordo nero preciso
+                        drawRect(
+                            color = Color.White.copy(alpha = currentAlpha),
+                            topLeft = topLeft,
+                            size = cellSize
+                        )
+                        drawRect(
+                            color = Color(0xFF1E2230).copy(alpha = currentAlpha),
+                            topLeft = topLeft,
+                            size = cellSize,
+                            style = Stroke(width = strokeW)
+                        )
+                    }
 
                     // Numeretto in alto a sinistra (se presente)
                     val number = numberedCells[r to c]

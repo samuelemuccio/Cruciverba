@@ -72,4 +72,48 @@ class CrosswordBuilderTest {
 
         assertFalse("Isolated cell should be cleaned to black", cleaned.whiteCells[1][1])
     }
+
+    @Test
+    fun `buildVariationsStrict handles accented words like POKEMON and generates dense grid`() = runBlocking {
+        val challengingWords = listOf(
+            WordClue("POKÉMON", "Creature tascabili"),
+            WordClue("SENPAIHOUSE", "Casa dei senpai"),
+            WordClue("GIANNANNINI", "Cantante senese"),
+            WordClue("LALALAND", "Musical con Gosling"),
+            WordClue("GINOCCHIO", "Articolazione"),
+            WordClue("DISNEY", "Mondo animato"),
+            WordClue("SUSHI", "Piatto giapponese")
+        )
+
+        val builder = CrosswordBuilder()
+        val reports = builder.buildVariationsStrict(challengingWords, maxSolutions = 5, requireAllWords = true)
+
+        assertFalse("Should produce crossword variations even with long words and accents", reports.isEmpty())
+        val best = reports.first()
+        assertTrue("All 7 words must be placed", best.complete)
+        assertEquals(7, best.placedWords.size)
+        // Check that POKEMON normalized is placed
+        assertTrue(best.placedWords.any { it == "POKEMON" })
+        assertTrue("Should have multiple intersections", best.crossword!!.totalIntersections >= 6)
+    }
+
+    @Test
+    fun `buildVariationsStrict produces dense schema with cyclic intersections`() = runBlocking {
+        // CASA, SOLE, LATO, SALE can form a closed 4-word cycle (4 intersections instead of tree's 3)
+        val cycleWords = listOf(
+            WordClue("CASA", "Abitazione"),
+            WordClue("SOLE", "Stella"),
+            WordClue("LATO", "Fianco"),
+            WordClue("SALE", "Cloruro di sodio")
+        )
+
+        val builder = CrosswordBuilder()
+        val reports = builder.buildVariationsStrict(cycleWords, maxSolutions = 5, requireAllWords = true)
+
+        assertFalse("Should find solutions", reports.isEmpty())
+        val top = reports.first()
+        assertTrue("All 4 words placed", top.complete)
+        val crossings = top.crossword!!.totalIntersections
+        assertTrue("Should achieve cycle with 4 intersections, got $crossings", crossings >= 4)
+    }
 }

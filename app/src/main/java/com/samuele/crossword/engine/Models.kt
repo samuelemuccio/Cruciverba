@@ -1,10 +1,19 @@
 package com.samuele.crossword.engine
 
+import java.text.Normalizer
+
 data class WordClue(val word: String, val clue: String) {
     init {
         require(word.isNotBlank()) { "word must not be blank" }
     }
-    val normalized: String get() = word.trim().uppercase()
+    val normalized: String get() = normalize(word)
+
+    companion object {
+        fun normalize(raw: String): String {
+            val nfd = Normalizer.normalize(raw.trim().uppercase(), Normalizer.Form.NFD)
+            return nfd.replace("\\p{M}+".toRegex(), "").filter { it in 'A'..'Z' }
+        }
+    }
 }
 
 enum class Direction { ACROSS, DOWN }

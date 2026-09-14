@@ -15,7 +15,7 @@ object WordListAnalyzer {
      * incroci validi all'interno della griglia.
      */
     fun analyzeConnectability(words: List<WordClue>): AnalysisResult {
-        val validWords = words.map { it.copy(word = it.word.trim().uppercase()) }
+        val validWords = words.map { it.copy(word = WordClue.normalize(it.word)) }
             .filter { it.word.length >= 2 }
 
         if (validWords.isEmpty()) {

@@ -1,116 +1,172 @@
 package com.samuele.crossword.export
 
 import android.content.Context
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.net.Uri
 import com.samuele.crossword.engine.CrosswordResult
-import com.samuele.crossword.engine.Direction
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.max
+
+data class PngExportOptions(
+    val scale: Int = 4,
+    val showSolution: Boolean = false,
+    val transparentCells: Boolean = true,
+    val baseCellSize: Float = 80f,
+    val strokeWidthScale: Float = 1.0f
+)
 
 object PngExporter {
 
     /**
-     * @param scale moltiplicatore risoluzione (es. 4 → 4x).
-     * @param showSolution se true disegna le lettere, altrimenti solo i numeri.
+     * Esegue il rendering della griglia del cruciverba ad altissima risoluzione,
+     * generando un'immagine PNG trasparente contenente ESCLUSIVAMENTE i quadrati del
+     * cruciverba con i loro bordi e i rispettivi numeretti (senza alcuno sfondo, testo esterno
+     * né definizioni), ideale per essere importata e ricalcata su Canva o altri editor.
+     */
+    fun render(
+        result: CrosswordResult,
+        options: PngExportOptions = PngExportOptions()
+    ): Bitmap {
+        val cell = options.baseCellSize * options.scale
+        val padding = 12f * options.scale
+        val totalW = (padding * 2 + result.cols * cell).toInt()
+        val totalH = (padding * 2 + result.rows * cell).toInt()
+
+        // Bitmap ARGB_8888 trasparente (nessun colore di sfondo impostato)
+        val bmp = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+
+        val fillWhite = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
+
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            style = Paint.Style.STROKE
+            strokeWidth = max(2.5f, 2.8f * options.scale * options.strokeWidthScale)
+            strokeCap = Paint.Cap.SQUARE
+            strokeJoin = Paint.Join.MITER
+        }
+
+        val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = cell * 0.23f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        }
+
+        val letterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = cell * 0.55f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+
+        // Mappa delle celle numerate (elimina duplicati tra orizzontali e verticali)
+        val numberedCells = HashMap<Pair<Int, Int>, Int>()
+        for (slot in result.slots) {
+            if (slot.number > 0 && slot.cells.isNotEmpty()) {
+                val r = slot.cells.first() / result.cols
+                val c = slot.cells.first() % result.cols
+                if ((r to c) !in numberedCells) {
+                    numberedCells[r to c] = slot.number
+                }
+            }
+        }
+
+        // Disegna SOLO i quadrati che appartengono al cruciverba (whiteCells == true)
+        for (r in 0 until result.rows) {
+            for (c in 0 until result.cols) {
+                if (result.whiteCells[r][c]) {
+                    val left = padding + c * cell
+                    val top = padding + r * cell
+                    val right = left + cell
+                    val bottom = top + cell
+
+                    // Se richiesto lo sfondo bianco delle celle, altrimenti resta 100% trasparente
+                    if (!options.transparentCells) {
+                        canvas.drawRect(left, top, right, bottom, fillWhite)
+                    }
+
+                    // Bordo netto del quadrato
+                    canvas.drawRect(left, top, right, bottom, borderPaint)
+
+                    // Numeretto nell'angolo in alto a sinistra
+                    val number = numberedCells[r to c]
+                    if (number != null) {
+                        val numX = left + cell * 0.08f
+                        val numY = top + cell * 0.27f
+                        canvas.drawText(number.toString(), numX, numY, numberPaint)
+                    }
+
+                    // Lettera della soluzione (se richiesta esplicitamente)
+                    if (options.showSolution) {
+                        val ch = result.letters[r][c]
+                        if (ch != ' ') {
+                            val cx = left + cell / 2f
+                            val cy = top + cell * 0.70f
+                            canvas.drawText(ch.toString(), cx, cy, letterPaint)
+                        }
+                    }
+                }
+            }
+        }
+
+        return bmp
+    }
+
+    /**
+     * Esporta su file locale.
      */
     fun export(
         context: Context,
         result: CrosswordResult,
-        scale: Int,
-        showSolution: Boolean,
-        outputFile: File
+        scale: Int = 4,
+        showSolution: Boolean = false,
+        outputFile: File,
+        transparentCells: Boolean = true
     ) {
-        val baseCell = 60f
-        val cell = baseCell * scale
-        val padding = 40f * scale
-        val gridW = padding * 2 + result.cols * cell
-        val gridH = padding * 2 + result.rows * cell
-        val cluesH = if (!showSolution) 300f * scale else 0f
-        val totalH = gridH + cluesH
-        val bmp = Bitmap.createBitmap(
-            gridW.toInt(), totalH.toInt(), Bitmap.Config.ARGB_8888
+        val options = PngExportOptions(
+            scale = scale,
+            showSolution = showSolution,
+            transparentCells = transparentCells
         )
-        val canvas = Canvas(bmp)
-        canvas.drawColor(Color.WHITE)
-
-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK; style = Paint.Style.STROKE; strokeWidth = 2f * scale
+        val bmp = render(result, options)
+        FileOutputStream(outputFile).use { out ->
+            bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
-        val fillBlack = Paint().apply { color = Color.BLACK; style = Paint.Style.FILL }
-        val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = cell * 0.22f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        val letterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = cell * 0.55f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-        val clueTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK; textSize = 20f * scale
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        val cluePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.DKGRAY; textSize = 16f * scale
-        }
-
-        // Griglia
-        for (r in 0 until result.rows) {
-            for (c in 0 until result.cols) {
-                val left = padding + c * cell
-                val top = padding + r * cell
-                val right = left + cell
-                val bottom = top + cell
-                if (!result.whiteCells[r][c]) {
-                    canvas.drawRect(left, top, right, bottom, fillBlack)
-                } else {
-                    canvas.drawRect(left, top, right, bottom, linePaint)
-                }
-            }
-        }
-        // Numeri
-        result.slots.filter { it.number > 0 }.forEach { slot ->
-            val r = slot.cells.first() / result.cols
-            val c = slot.cells.first() % result.cols
-            val left = padding + c * cell
-            val top = padding + r * cell
-            canvas.drawText(slot.number.toString(), left + cell * 0.06f, top + cell * 0.24f, numberPaint)
-        }
-        // Lettere (solo soluzione)
-        if (showSolution) {
-            for (r in 0 until result.rows) for (c in 0 until result.cols) {
-                val ch = result.letters[r][c]
-                if (ch == ' ') continue
-                val cx = padding + c * cell + cell / 2
-                val cy = padding + r * cell + cell * 0.72f
-                canvas.drawText(ch.toString(), cx, cy, letterPaint)
-            }
-        } else {
-            // Definizioni sotto
-            var y = gridH + 30f * scale
-            val across = result.slots.filter { it.direction == Direction.ACROSS && it.number > 0 }
-                .sortedBy { it.number }
-            val down = result.slots.filter { it.direction == Direction.DOWN && it.number > 0 }
-                .sortedBy { it.number }
-
-            canvas.drawText("ORIZZONTALI", padding, y, clueTitlePaint); y += 22f * scale
-            across.forEach { s ->
-                val clue = result.assignments[s.id]?.clue ?: "—"
-                canvas.drawText("${s.number}. $clue (${s.length})", padding, y, cluePaint)
-                y += 20f * scale
-            }
-            y += 12f * scale
-            canvas.drawText("VERTICALI", padding, y, clueTitlePaint); y += 22f * scale
-            down.forEach { s ->
-                val clue = result.assignments[s.id]?.clue ?: "—"
-                canvas.drawText("${s.number}. $clue (${s.length})", padding, y, cluePaint)
-                y += 20f * scale
-            }
-        }
-
-        FileOutputStream(outputFile).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bmp.recycle()
+    }
+
+    /**
+     * Esporta e salva direttamente nella Galleria del dispositivo (album Pictures/Cruciverba).
+     */
+    fun exportToGallery(
+        context: Context,
+        result: CrosswordResult,
+        scale: Int = 4,
+        showSolution: Boolean = false,
+        title: String = "cruciverba",
+        transparentCells: Boolean = true
+    ): Uri? {
+        val options = PngExportOptions(
+            scale = scale,
+            showSolution = showSolution,
+            transparentCells = transparentCells
+        )
+        val bmp = render(result, options)
+        val uri = GalleryExporter.saveToGallery(
+            context = context,
+            bitmap = bmp,
+            title = if (showSolution) "${title}_soluzione" else "${title}_schema",
+            subfolder = "Cruciverba"
+        )
+        bmp.recycle()
+        return uri
     }
 }

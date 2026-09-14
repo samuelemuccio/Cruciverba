@@ -37,7 +37,9 @@ data class EditorState(
     val draftClue: String = "",
     val listName: String = "",
     val savedLists: List<WordListEntity> = emptyList(),
-    val analysis: AnalysisResult = AnalysisResult(10, emptyList(), true)
+    val analysis: AnalysisResult = AnalysisResult(10, emptyList(), true),
+    val editingWord: WordEntry? = null,
+    val toastMessage: String? = null
 )
 
 class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
@@ -63,7 +65,7 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
     }
 
     fun onDraftWordChange(s: String) = _state.update {
-        it.copy(draftWord = s.uppercase().filter { c -> c.isLetter() })
+        it.copy(draftWord = WordClue.normalize(s))
     }
 
     fun onDraftClueChange(s: String) = _state.update {
@@ -72,7 +74,7 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
 
     fun addWord() {
         val s = _state.value
-        val cleanWord = s.draftWord.trim()
+        val cleanWord = WordClue.normalize(s.draftWord)
         val cleanClue = s.draftClue.trim()
         if (cleanWord.length < 2 || cleanClue.isBlank()) return
         val newWords = s.words + WordEntry(word = cleanWord, clue = cleanClue)
@@ -86,10 +88,69 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
         }
     }
 
+    fun moveWord(fromIndex: Int, toIndex: Int) {
+        val current = _state.value.words.toMutableList()
+        if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) return
+        val item = current.removeAt(fromIndex)
+        current.add(toIndex, item)
+        _state.update {
+            it.copy(words = current, analysis = computeAnalysis(current))
+        }
+    }
+
+    fun setEditingWord(entry: WordEntry?) = _state.update {
+        it.copy(editingWord = entry)
+    }
+
+    fun updateWord(id: String, newWord: String, newClue: String) {
+        val cleanWord = WordClue.normalize(newWord)
+        val cleanClue = newClue.trim()
+        if (cleanWord.length < 2 || cleanClue.isBlank()) return
+        val newWords = _state.value.words.map {
+            if (it.id == id) it.copy(word = cleanWord, clue = cleanClue) else it
+        }
+        _state.update {
+            it.copy(
+                words = newWords,
+                analysis = computeAnalysis(newWords),
+                editingWord = null
+            )
+        }
+    }
+
+    fun importWords(newWords: List<WordClue>, replaceExisting: Boolean) {
+        if (newWords.isEmpty()) return
+        val entries = newWords.map { WordEntry(word = it.normalized, clue = it.clue) }
+        val merged = if (replaceExisting) entries else (_state.value.words + entries)
+        _state.update {
+            it.copy(
+                words = merged,
+                analysis = computeAnalysis(merged),
+                toastMessage = "Importate con successo ${newWords.size} parole!"
+            )
+        }
+    }
+
+    fun shuffleWords() {
+        val shuffled = _state.value.words.shuffled()
+        _state.update {
+            it.copy(words = shuffled, analysis = computeAnalysis(shuffled))
+        }
+    }
+
     fun removeWord(id: String) {
         val newWords = _state.value.words.filterNot { w -> w.id == id }
         _state.update {
             it.copy(words = newWords, analysis = computeAnalysis(newWords))
+        }
+    }
+
+    fun restoreWord(index: Int, entry: WordEntry) {
+        val current = _state.value.words.toMutableList()
+        val targetIndex = index.coerceIn(0, current.size)
+        current.add(targetIndex, entry)
+        _state.update {
+            it.copy(words = current, analysis = computeAnalysis(current))
         }
     }
 
@@ -98,6 +159,10 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
             it.copy(words = emptyList(), analysis = computeAnalysis(emptyList()))
         }
     }
+
+    fun clearToast() = _state.update { it.copy(toastMessage = null) }
+
+    fun showToast(msg: String) = _state.update { it.copy(toastMessage = msg) }
 
     fun onListNameChange(name: String) = _state.update {
         it.copy(listName = name)
@@ -111,7 +176,12 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
                 s.listName.trim(),
                 s.words.map { WordClue(it.word, it.clue) }
             )
-            _state.update { it.copy(listName = "") }
+            _state.update {
+                it.copy(
+                    listName = "",
+                    toastMessage = "Lista '${s.listName.trim()}' salvata!"
+                )
+            }
         }
     }
 
@@ -124,13 +194,17 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
                 it.copy(
                     listName = list.name,
                     words = newWords,
-                    analysis = computeAnalysis(newWords)
+                    analysis = computeAnalysis(newWords),
+                    toastMessage = "Caricata lista '${list.name}' (${newWords.size} parole)"
                 )
             }
         }
     }
 
     fun deleteList(list: WordListEntity) {
-        viewModelScope.launch { repo.delete(list) }
+        viewModelScope.launch {
+            repo.delete(list)
+            _state.update { it.copy(toastMessage = "Lista '${list.name}' eliminata") }
+        }
     }
 }

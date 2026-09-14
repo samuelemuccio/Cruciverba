@@ -34,7 +34,8 @@ object CrosswordOptimizer {
         'L' to 6.51f,  'C' to 4.50f,  'D' to 3.73f,  'U' to 3.11f,
         'M' to 2.51f,  'P' to 3.05f,  'V' to 2.10f,  'G' to 1.64f,
         'B' to 0.92f,  'F' to 1.15f,  'Z' to 1.18f,  'H' to 1.43f,
-        'Q' to 0.51f
+        'Q' to 0.51f,
+        'K' to 0.50f,  'W' to 0.50f,  'X' to 0.50f,  'Y' to 0.50f, 'J' to 0.50f
     )
 
     /**
@@ -44,8 +45,8 @@ object CrosswordOptimizer {
      * presenza delle lettere nelle altre parole del cruciverba.
      */
     fun calculateCrossingPotential(word: String, allWords: List<String>): Float {
-        val upper = word.trim().uppercase()
-        val otherWords = allWords.filter { it.trim().uppercase() != upper }
+        val upper = WordClue.normalize(word)
+        val otherWords = allWords.map { WordClue.normalize(it) }.filter { it != upper }
         if (otherWords.isEmpty()) return 0f
 
         var matchOpportunities = 0f
@@ -89,8 +90,11 @@ object CrosswordOptimizer {
         val occupiedCells = built.whiteCells.sumOf { r -> r.count { it } }
         val density = if (area > 0) occupiedCells.toFloat() / area.toFloat() else 0f
 
-        // 1. Numero incroci effettivi
+        // 1. Numero incroci effettivi: ogni incrocio rende la griglia un vero cruciverba
         val crossings = built.totalIntersections
+        val minTreeCrossings = max(1, built.placed.size - 1)
+        val extraCrossings = max(0, crossings - minTreeCrossings)
+        val extraCrossingsBonus = (extraCrossings * extraCrossings) * 150f
 
         // 2. Compattezza geometrica: rapporto tra celle occupate e l'area convessa approssimata
         val compactness = calculateCompactness(built.whiteCells, rows, cols)
@@ -98,25 +102,26 @@ object CrosswordOptimizer {
         // 3. Simmetria (rotazionale a 180 gradi, standard enigmistico)
         val symmetry = calculateRotationalSymmetry(built.whiteCells, rows, cols)
 
-        // 4. Buchi interni inutili (celle nere intrappolate tra celle bianche)
+        // 4. Buchi interni (celle nere isolate 1x1, peso minimo per non penalizzare anelli a 4 parole)
         val internalHoles = countInternalHoles(built.whiteCells, rows, cols)
 
         // 5. Parole isolate (parole che hanno solo 1 incrocio al bordo o che creano tentacoli esterni)
         val isolatedWords = countIsolatedWords(built)
 
-        // 6. Rapporto d'aspetto (penalità per griglie a corridoio)
+        // 6. Rapporto d'aspetto (penalità per griglie a corridoio sbilanciate)
         val longer = max(rows, cols).toFloat()
         val shorter = max(1, min(rows, cols)).toFloat()
         val ratio = longer / shorter
-        val aspectRatioPenalty = if (ratio > 1.25f) (ratio - 1.0f) * 220f else 0f
+        val aspectRatioPenalty = if (ratio > 1.30f) (ratio - 1.0f) * 250f else 0f
 
-        val score = (crossings * 100f) +
-                (density * 80f) +
-                (compactness * 100f) +
-                (symmetry * 35f) -
-                (internalHoles * 40f) -
-                (isolatedWords * 90f) -
-                (area * 0.5f) -
+        val score = (crossings * 250f) +
+                extraCrossingsBonus +
+                (density * 220f) +
+                (compactness * 120f) +
+                (symmetry * 25f) -
+                (isolatedWords * 160f) -
+                (internalHoles * 5f) -
+                (area * 0.4f) -
                 aspectRatioPenalty
 
         return AestheticScore(

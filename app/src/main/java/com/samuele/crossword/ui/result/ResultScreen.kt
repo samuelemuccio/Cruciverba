@@ -1,8 +1,16 @@
 package com.samuele.crossword.ui.result
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -13,13 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -27,7 +34,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,7 +49,12 @@ import com.samuele.crossword.engine.Direction
 import com.samuele.crossword.engine.WordClue
 import com.samuele.crossword.ui.components.ButtonVariant
 import com.samuele.crossword.ui.components.FreeSpaceCrosswordViewer
+import com.samuele.crossword.ui.components.GlassmorphicCard
 import com.samuele.crossword.ui.components.PremiumButton
+import com.samuele.crossword.ui.components.obsidianBackground
+import com.samuele.crossword.ui.theme.RoyalIndigo
+import com.samuele.crossword.ui.theme.RoyalIndigoDark
+import com.samuele.crossword.ui.theme.SlateTextSecondary
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,9 +65,7 @@ fun ResultScreen(
     onBack: () -> Unit
 ) {
     val s by vm.state.collectAsState()
-    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showStyleSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(s.savedToast) {
         s.savedToast?.let { msg ->
@@ -62,66 +75,76 @@ fun ResultScreen(
     }
 
     Scaffold(
+        modifier = Modifier.obsidianBackground(),
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Il tuo cruciverba", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        "Cruciverba",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("back_button")) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Indietro",
+                            tint = Color.White
+                        )
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { vm.toggleSolution() },
-                        modifier = Modifier.testTag("toggle_solution_button")
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.08f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier.padding(end = 8.dp)
                     ) {
-                        Icon(
-                            if (s.showSolution) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (s.showSolution) "Nascondi soluzione" else "Mostra soluzione"
-                        )
-                    }
-                    IconButton(
-                        onClick = onExport,
-                        enabled = s.current != null,
-                        modifier = Modifier.testTag("export_button")
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = "Esporta e condividi")
+                        IconButton(
+                            onClick = { vm.toggleSolution() },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("toggle_solution_button")
+                        ) {
+                            Icon(
+                                if (s.showSolution) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (s.showSolution) "Nascondi soluzione" else "Mostra soluzione",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    containerColor = Color(0xFF0B0C10).copy(alpha = 0.85f)
                 )
             )
         },
         bottomBar = {
             if (s.variants.isNotEmpty() && s.current != null) {
                 Surface(
-                    tonalElevation = 8.dp,
-                    shadowElevation = 8.dp,
-                    color = MaterialTheme.colorScheme.surfaceContainer
+                    color = Color(0xFF0E1018).copy(alpha = 0.94f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Brush.verticalGradient(
+                            listOf(Color.White.copy(alpha = 0.14f), Color.Transparent)
+                        )
+                    )
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         PremiumButton(
-                            text = "Stile",
-                            icon = Icons.Default.Palette,
-                            onClick = { showStyleSheet = true },
-                            variant = ButtonVariant.Secondary,
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("open_style_sheet_button")
-                        )
-
-                        PremiumButton(
                             text = "Salva",
-                            icon = Icons.Default.Save,
+                            icon = Icons.Default.BookmarkBorder,
                             onClick = { vm.saveCurrent() },
                             variant = ButtonVariant.Secondary,
                             modifier = Modifier
@@ -130,8 +153,8 @@ fun ResultScreen(
                         )
 
                         PremiumButton(
-                            text = "Esporta",
-                            icon = Icons.Default.Share,
+                            text = "Scarica",
+                            icon = Icons.Default.Download,
                             onClick = onExport,
                             variant = ButtonVariant.Primary,
                             modifier = Modifier
@@ -153,38 +176,56 @@ fun ResultScreen(
             s.variants.isNotEmpty() && s.current != null -> {
                 val currentResult = s.current!!
 
+                var dragAccumulator by remember { mutableFloatStateOf(0f) }
+
                 Column(
                     modifier = Modifier
                         .padding(padding)
                         .fillMaxSize()
+                        .pointerInput(s.index, s.variants.size) {
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    if (dragAccumulator < -60f && s.hasNext) {
+                                        vm.next()
+                                    } else if (dragAccumulator > 60f && s.hasPrev) {
+                                        vm.prev()
+                                    }
+                                    dragAccumulator = 0f
+                                },
+                                onHorizontalDrag = { _, dragAmount ->
+                                    dragAccumulator += dragAmount
+                                }
+                            )
+                        }
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Header con Navigatore Varianti e chip di selezione rapida
-                    VariantNavigatorBar(
-                        current = s.index + 1,
-                        total = s.variants.size,
-                        hasPrev = s.hasPrev,
-                        hasNext = s.hasNext,
-                        selectedIndex = s.index,
-                        aestheticScore = s.currentReport?.aestheticScore,
-                        onSelect = { vm.jumpTo(it) },
-                        onPrev = { vm.prev() },
-                        onNext = { vm.next() }
-                    )
+                    Spacer(Modifier.height(2.dp))
 
-                    // Spazio libero per il cruciverba rettangolare con Zoom, Pan e rendering grafico
+                    // Pillola galleggiante in vetro satinato per navigazione varianti
+                    if (s.variants.size > 1) {
+                        FloatingVariantNavigatorPill(
+                            current = s.index + 1,
+                            total = s.variants.size,
+                            hasPrev = s.hasPrev,
+                            hasNext = s.hasNext,
+                            aestheticScore = s.currentReport?.aestheticScore,
+                            onPrev = { vm.prev() },
+                            onNext = { vm.next() }
+                        )
+                    }
+
+                    // Cruciverba 2D con animazione fluida
                     FreeSpaceCrosswordViewer(
                         result = currentResult,
                         theme = s.theme,
                         showSolution = s.showSolution,
-                        onToggleSolution = { vm.toggleSolution() },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                     )
 
-                    // Sezione Definizioni con elenco completo delle parole inserite
+                    // Sezione Definizioni con Segmented Control orizzontali/verticali
                     ClueSection(
                         result = currentResult,
                         theme = s.theme,
@@ -196,149 +237,142 @@ fun ResultScreen(
 
                     Spacer(Modifier.height(24.dp))
                 }
-
-                if (showStyleSheet) {
-                    StyleSheet(
-                        currentTheme = s.theme,
-                        showSolution = s.showSolution,
-                        cellScale = s.cellScale,
-                        onThemeChange = { vm.changeTheme(it) },
-                        onFontChange = { vm.changeFont(it) },
-                        onCellScaleChange = { vm.changeCellScale(it) },
-                        onToggleSolution = { vm.toggleSolution() },
-                        onDismiss = { showStyleSheet = false }
-                    )
-                }
             }
         }
     }
 }
 
 @Composable
-fun VariantNavigatorBar(
+fun FloatingVariantNavigatorPill(
     current: Int,
     total: Int,
     hasPrev: Boolean,
     hasNext: Boolean,
-    selectedIndex: Int,
     aestheticScore: com.samuele.crossword.engine.AestheticScore? = null,
-    onSelect: (Int) -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit
 ) {
-    val chipListState = rememberLazyListState()
-
-    LaunchedEffect(selectedIndex) {
-        chipListState.animateScrollToItem(selectedIndex.coerceAtLeast(0))
-    }
-
-    Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
-        tonalElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
-            modifier = Modifier
-                .padding(top = 10.dp, bottom = 12.dp)
-                .fillMaxWidth()
+        GlassmorphicCard(
+            shape = RoundedCornerShape(26.dp),
+            backgroundColor = Color(0xFF141724).copy(alpha = 0.88f),
+            elevation = 6.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
             Row(
                 modifier = Modifier
-                    .padding(horizontal = 16.dp)
+                    .padding(horizontal = 10.dp, vertical = 10.dp)
                     .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                FilledIconButton(
+                // Freccia sinistra minimale semi-trasparente
+                Surface(
                     onClick = onPrev,
                     enabled = hasPrev,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                    ),
-                    modifier = Modifier.size(36.dp).testTag("prev_solution_button")
+                    shape = CircleShape,
+                    color = if (hasPrev) Color.White.copy(alpha = 0.08f) else Color.Transparent,
+                    border = if (hasPrev) androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)) else null,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("prev_solution_button")
                 ) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "Variante precedente")
-                }
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "Variante $current di $total",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            imageVector = Icons.Default.ChevronLeft,
+                            contentDescription = "Variante precedente",
+                            tint = if (hasPrev) Color.White else Color.White.copy(alpha = 0.18f),
+                            modifier = Modifier.size(22.dp)
                         )
                     }
+                }
+
+                // Centro: "Variante X di Y", metriche e dot pagination
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Variante $current di $total",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+
                     val subtitle = if (aestheticScore != null) {
                         val densityPct = kotlin.math.round((aestheticScore.density * 100f)).toInt()
-                        val symPct = kotlin.math.round((aestheticScore.symmetry * 100f)).toInt()
-                        if (selectedIndex == 0) {
-                            "★ Top Schema: ${aestheticScore.crossings} incroci • ${densityPct}% densità • ${symPct}% simm."
-                        } else {
-                            "Schema compatto: ${aestheticScore.crossings} incroci • ${densityPct}% densità"
-                        }
+                        "${aestheticScore.crossings} incroci • ${densityPct}% densità"
                     } else {
-                        if (selectedIndex == 0) "Schema a massima compattezza (100% parole)" else "Schema incrociato compatto (100% parole)"
+                        "100% parole incrociate"
                     }
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = SlateTextSecondary
                     )
+
+                    // Micro-indicatori di scorrimento (dot pagination con larghezza attiva dinamica)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        val maxDots = total.coerceAtMost(8)
+                        for (i in 0 until maxDots) {
+                            val isActive = i == (current - 1).coerceAtMost(maxDots - 1)
+                            val dotWidth by animateDpAsState(
+                                targetValue = if (isActive) 16.dp else 5.dp,
+                                animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
+                                label = "dotWidth"
+                            )
+                            val dotColor by animateColorAsState(
+                                targetValue = if (isActive) RoyalIndigo else Color.White.copy(alpha = 0.22f),
+                                label = "dotColor"
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(width = dotWidth, height = 4.dp)
+                                    .clip(CircleShape)
+                                    .background(dotColor)
+                            )
+                        }
+                    }
                 }
 
-                FilledIconButton(
+                // Freccia destra minimale semi-trasparente
+                Surface(
                     onClick = onNext,
                     enabled = hasNext,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                    ),
-                    modifier = Modifier.size(36.dp).testTag("next_solution_button")
+                    shape = CircleShape,
+                    color = if (hasNext) Color.White.copy(alpha = 0.08f) else Color.Transparent,
+                    border = if (hasNext) androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)) else null,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("next_solution_button")
                 ) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = "Variante successiva")
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // Chip scrollabili per selezionare direttamente la variante
-            LazyRow(
-                state = chipListState,
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(total) { idx ->
-                    val isSelected = idx == selectedIndex
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onSelect(idx) },
-                        label = { Text("Schema ${idx + 1}", fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                            labelColor = MaterialTheme.colorScheme.onSurface
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.height(32.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "Variante successiva",
+                            tint = if (hasNext) Color.White else Color.White.copy(alpha = 0.18f),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+enum class ClueTab {
+    ACROSS,
+    DOWN
 }
 
 @Composable
@@ -357,114 +391,158 @@ fun ClueSection(
             .sortedBy { it.number }
     }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (across.isNotEmpty()) {
-            ClueCard(
-                title = "ORIZZONTALI",
-                slots = across,
-                result = result,
-                theme = theme,
-                showSolution = showSolution
-            )
-        }
-        if (down.isNotEmpty()) {
-            ClueCard(
-                title = "VERTICALI",
-                slots = down,
-                result = result,
-                theme = theme,
-                showSolution = showSolution
-            )
-        }
-    }
-}
+    var selectedTab by remember { mutableStateOf(ClueTab.ACROSS) }
 
-@Composable
-fun ClueCard(
-    title: String,
-    slots: List<com.samuele.crossword.engine.Slot>,
-    result: CrosswordResult,
-    theme: CrosswordTheme,
-    showSolution: Boolean
-) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        modifier = Modifier.fillMaxWidth()
+    GlassmorphicCard(
+        shape = RoundedCornerShape(22.dp),
+        modifier = modifier.animateContentSize(
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f)
+        )
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // iOS Segmented Control in vetro satinato
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFF0D0F18).copy(alpha = 0.9f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = "${slots.size} parole",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            slots.forEach { slot ->
-                val wordClue = result.assignments[slot.id]
-                val clue = wordClue?.clue ?: "—"
-                val word = wordClue?.word ?: ""
-
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 5.dp),
-                    verticalAlignment = Alignment.Top
+                        .fillMaxSize()
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "${slot.number}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = clue,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        if (showSolution && word.isNotEmpty()) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = "Soluzione: $word",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant
+                    // Tab Orizzontali
+                    val isAcross = selectedTab == ClueTab.ACROSS
+                    val acrossBg by animateColorAsState(
+                        if (isAcross) RoyalIndigoDark else Color.Transparent,
+                        label = "acrossBg"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(acrossBg)
+                            .clickable { selectedTab = ClueTab.ACROSS },
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "${slot.length}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            text = "ORIZZONTALI (${across.size})",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isAcross) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isAcross) Color.White else SlateTextSecondary
                         )
+                    }
+
+                    // Tab Verticali
+                    val isDown = selectedTab == ClueTab.DOWN
+                    val downBg by animateColorAsState(
+                        if (isDown) RoyalIndigoDark else Color.Transparent,
+                        label = "downBg"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(downBg)
+                            .clickable { selectedTab = ClueTab.DOWN },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "VERTICALI (${down.size})",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isDown) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isDown) Color.White else SlateTextSecondary
+                        )
+                    }
+                }
+            }
+
+            // Lista quesiti con badge numerico circolare e 1px border
+            val currentSlots = if (selectedTab == ClueTab.ACROSS) across else down
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (currentSlots.isEmpty()) {
+                    Text(
+                        text = "Nessuna definizione disponibile",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SlateTextSecondary,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                } else {
+                    currentSlots.forEach { slot ->
+                        val wordClue = result.assignments[slot.id]
+                        val clue = wordClue?.clue ?: "—"
+                        val word = wordClue?.word ?: ""
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Badge numerico circolare con fondo scuro semi-trasparente e bordo 1px
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFF1E2336),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "${slot.number}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = clue,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White,
+                                    lineHeight = 19.sp
+                                )
+                                if (showSolution && word.isNotEmpty()) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = "Soluzione: $word",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = RoyalIndigo
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.width(8.dp))
+
+                            // Badge numero lettere
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.06f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                            ) {
+                                Text(
+                                    text = "${slot.length}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SlateTextSecondary,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -482,16 +560,21 @@ fun LoadingView(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            CircularProgressIndicator(modifier = Modifier.size(48.dp))
+            CircularProgressIndicator(
+                color = RoyalIndigo,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(48.dp)
+            )
             Text(
                 text = "Creazione cruciverba in corso...",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
             )
             Text(
                 text = "L'algoritmo di backtracking sta calcolando incroci al 100% per tutte le tue parole",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = SlateTextSecondary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 32.dp)
             )
@@ -511,12 +594,12 @@ fun ErrorView(
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        GlassmorphicCard(
+            shape = RoundedCornerShape(22.dp),
+            backgroundColor = Color(0xFF201318)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
@@ -524,25 +607,21 @@ fun ErrorView(
                     text = "Nessuna combinazione",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onErrorContainer
+                    color = Color.White
                 )
                 Text(
                     text = error,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = SlateTextSecondary,
                     textAlign = TextAlign.Center
                 )
-                Button(
+                PremiumButton(
+                    text = "Torna alle parole",
+                    icon = Icons.Default.Refresh,
                     onClick = onBack,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Torna alle parole")
-                }
+                    variant = ButtonVariant.Primary,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.samuele.crossword.engine
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
 import kotlin.math.max
@@ -146,120 +148,139 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         val stepScore: Float
     )
 
+    private data class GridPosKey(
+        val row: Int,
+        val col: Int,
+        val direction: Direction
+    )
+
     /**
      * Esegue la pipeline completa di generazione e ottimizzazione.
+     * Esegue ricerche iterative ad alta densità per massimizzare il numero di incroci,
+     * la compattezza e la qualità geometrica, esplorando più configurazioni e ripetizioni.
      */
-    suspend fun buildVariationsStrict(
-        words: List<WordClue>,
-        maxSolutions: Int = 20,
-        requireAllWords: Boolean = true
-    ): List<BuildReport> {
-        val unique = words
-            .map { it.copy(word = it.word.trim().uppercase()) }
-            .distinctBy { it.word }
-            .filter { it.word.length >= 2 && it.word.all { c -> c.isLetter() } }
+     suspend fun buildVariationsStrict(
+         words: List<WordClue>,
+         maxSolutions: Int = 30,
+         requireAllWords: Boolean = true
+     ): List<BuildReport> = withContext(Dispatchers.Default) {
+         val unique = words
+             .map { it.copy(word = WordClue.normalize(it.word)) }
+             .distinctBy { it.word }
+             .filter { it.word.length >= 2 && it.word.all { c -> c in 'A'..'Z' } }
 
-        if (unique.size < 2) return emptyList()
+         if (unique.size < 2) return@withContext emptyList()
 
-        val allWordStrings = unique.map { it.word }
-        val totalWords = unique.size
+         val allWordStrings = unique.map { it.word }
+         val totalWords = unique.size
 
-        // 1. PREPROCESSING: Calcolo del Crossing Potential per ciascuna parola
-        val potentialMap = unique.associateWith { wc ->
-            CrosswordOptimizer.calculateCrossingPotential(wc.word, allWordStrings)
-        }
+         // 1. PREPROCESSING: Calcolo del Crossing Potential per ciascuna parola
+         val potentialMap = unique.associateWith { wc ->
+             CrosswordOptimizer.calculateCrossingPotential(wc.word, allWordStrings)
+         }
 
-        // Ordina le parole in base al loro potenziale di incrocio
-        val wordsByPotential = unique.sortedByDescending { potentialMap[it] ?: 0f }
+         // Ordina le parole in base al loro potenziale di incrocio
+         val wordsByPotential = unique.sortedByDescending { potentialMap[it] ?: 0f }
 
-        // Limite dimensionale per lato (garantisce schemi compatti evitando forme disperse)
-        val maxWordLen = unique.maxOf { it.word.length }
-        val totalChars = unique.sumOf { it.word.length }
-        val maxSideLimit = max(13, max(maxWordLen + 4, (sqrt(totalChars.toDouble()) * 1.95).toInt()))
+         // Limiti dimensionali: proviamo sia un limite stretto (comprime la griglia forzando incroci)
+         // che un limite standard per dare respiro
+         val maxWordLen = unique.maxOf { it.word.length }
+         val totalChars = unique.sumOf { it.word.length }
+         val tightLimit = max(11, max(maxWordLen + 2, (sqrt(totalChars.toDouble()) * 1.50).toInt()))
+         val standardLimit = max(13, max(maxWordLen + 4, (sqrt(totalChars.toDouble()) * 1.88).toInt()))
 
-        val completedCrosswords = mutableListOf<BuiltCrossword>()
-        val signatures = HashSet<String>()
+         val completedCrosswords = mutableListOf<BuiltCrossword>()
+         val signatures = HashSet<String>()
 
-        // 2. BEAM SEARCH CON SELEZIONE MULTIPLA DI ANCHOR WORDS
-        // Selezioniamo le migliori anchor words (parole con alto potenziale d'incrocio)
-        val candidateAnchors = wordsByPotential.take(min(6, wordsByPotential.size))
+         fun addSolution(sol: BuiltCrossword) {
+             if (sol.placed.size == totalWords && sol.aspectRatioFactor <= 2.05f) {
+                 val sig = signature(sol)
+                 if (sig !in signatures) {
+                     signatures += sig
+                     completedCrosswords += sol
+                 }
+             }
+         }
 
-        for (anchor in candidateAnchors) {
-            coroutineContext.ensureActive()
-            // Testiamo l'ancora sia orizzontale che verticale
-            for (dir in listOf(Direction.ACROSS, Direction.DOWN)) {
-                val solutionsFromBeam = runBeamSearch(
-                    anchor = anchor,
-                    anchorDir = dir,
-                    allWords = unique,
-                    potentialMap = potentialMap,
-                    maxSideLimit = maxSideLimit,
-                    beamWidth = 45
-                )
+         // 2. FASE 1: BEAM SEARCH AD ALTA DENSITÀ CON SELEZIONE MULTIPLA DI ANCORAGGI
+         // Esploriamo sia il limite stretto (massima densità) che quello standard con beam ampio
+         val candidateAnchors = wordsByPotential.take(min(8, wordsByPotential.size))
 
-                for (sol in solutionsFromBeam) {
-                    if (sol.placed.size == totalWords && sol.aspectRatioFactor <= 1.80f) {
-                        val sig = signature(sol)
-                        if (sig !in signatures) {
-                            signatures += sig
-                            completedCrosswords += sol
-                        }
-                    }
-                }
+         for (limit in listOf(tightLimit, standardLimit)) {
+             for (anchor in candidateAnchors) {
+                 coroutineContext.ensureActive()
+                 for (dir in listOf(Direction.ACROSS, Direction.DOWN)) {
+                     val solutionsFromBeam = runBeamSearch(
+                         anchor = anchor,
+                         anchorDir = dir,
+                         allWords = unique,
+                         potentialMap = potentialMap,
+                         maxSideLimit = limit,
+                         beamWidth = 140
+                     )
 
-                if (completedCrosswords.size >= maxSolutions * 2) break
-            }
-            if (completedCrosswords.size >= maxSolutions * 2) break
-        }
+                     for (sol in solutionsFromBeam) {
+                         addSolution(sol)
+                     }
 
-        // 3. FALLBACK CSP BACKTRACKING (Se il Beam Search necessita di ulteriori varianti)
-        if (completedCrosswords.size < maxSolutions) {
-            var restart = 0
-            val maxRestarts = 120
-            while (completedCrosswords.size < maxSolutions && restart < maxRestarts) {
-                coroutineContext.ensureActive()
-                restart++
+                     if (completedCrosswords.size >= maxSolutions * 2) break
+                 }
+                 if (completedCrosswords.size >= maxSolutions * 2) break
+             }
+             if (completedCrosswords.size >= maxSolutions * 2) break
+         }
 
-                val anchor = wordsByPotential.take(min(5, wordsByPotential.size)).random(random)
-                val anchorDir = if (restart % 2 == 0) Direction.ACROSS else Direction.DOWN
-                val remaining = unique.filter { it.word != anchor.word }.shuffled(random)
+         // 3. FASE 2: RIPETIZIONI ITERATIVE MULTI-START PER MASSIMA QUALITÀ E INCROCI
+         // L'algoritmo effettua n ripetizioni stocastiche per raggiungere la massima densità
+         var restarts = 0
+         val maxRestarts = 160
+         val minTargetCrossings = totalWords // vogliamo superare l'albero semplice N-1
 
-                val sol = solveBacktracking(
-                    firstWord = anchor,
-                    firstDirection = anchorDir,
-                    remaining = remaining,
-                    maxSideLimit = maxSideLimit + 1
-                )
+         while (restarts < maxRestarts) {
+             coroutineContext.ensureActive()
+             restarts++
 
-                if (sol != null && sol.placed.size == totalWords && sol.aspectRatioFactor <= 1.85f) {
-                    val sig = signature(sol)
-                    if (sig !in signatures) {
-                        signatures += sig
-                        completedCrosswords += sol
-                    }
-                }
-            }
-        }
+             val anchor = wordsByPotential.take(min(7, wordsByPotential.size)).random(random)
+             val anchorDir = if (random.nextBoolean()) Direction.ACROSS else Direction.DOWN
+             val remaining = unique.filter { it.word != anchor.word }.shuffled(random)
 
-        // 4. DECOUPLED GRID OPTIMIZER:
-        // Valutazione estetica geometrica rigorosa su tutte le soluzioni trovate
-        val scoredReports = completedCrosswords.map { cw ->
-            val aesthetic = cw.aestheticScore
-            BuildReport(
-                crossword = cw,
-                result = cw.toResult(),
-                placedWords = cw.placed.map { it.word },
-                unplacedWords = emptyList(),
-                complete = true,
-                aestheticScore = aesthetic
-            )
-        }
+             val currentLimit = if (restarts % 2 == 0) tightLimit else standardLimit
 
-        // Ordina rigorosamente per il punteggio estetico matematico dell'Optimizer
-        return scoredReports
-            .sortedByDescending { it.aestheticScore?.totalScore ?: Float.NEGATIVE_INFINITY }
-            .take(maxSolutions)
-    }
+             val sol = solveBacktracking(
+                 firstWord = anchor,
+                 firstDirection = anchorDir,
+                 remaining = remaining,
+                 maxSideLimit = currentLimit
+             )
+
+             if (sol != null) {
+                 addSolution(sol)
+             }
+
+             val bestIntersections = completedCrosswords.maxOfOrNull { it.totalIntersections } ?: 0
+             if (completedCrosswords.size >= maxSolutions * 3 && bestIntersections > minTargetCrossings && restarts >= 60) {
+                 break
+             }
+         }
+
+         // 4. VALUTAZIONE ESTETICA GEOMETRICA E ORDINAMENTO RIGOROSO
+         val scoredReports = completedCrosswords.map { cw ->
+             val aesthetic = cw.aestheticScore
+             BuildReport(
+                 crossword = cw,
+                 result = cw.toResult(),
+                 placedWords = cw.placed.map { it.word },
+                 unplacedWords = emptyList(),
+                 complete = true,
+                 aestheticScore = aesthetic
+             )
+         }
+
+         // Ordina rigorosamente per punteggio estetico matematico dell'Optimizer (incroci + densità)
+         scoredReports
+             .sortedByDescending { it.aestheticScore?.totalScore ?: Float.NEGATIVE_INFINITY }
+             .take(maxSolutions)
+     }
 
     suspend fun buildVariations(
         words: List<WordClue>,
@@ -327,10 +348,7 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
 
             for (state in ongoing) {
                 // 2. SCELTA DELLA PROSSIMA PAROLA: MRV (Minimum Remaining Values) + DEGREE
-                var chosenWord: WordClue? = null
-                var chosenPlacements: List<CandidatePlacement> = emptyList()
-                var minDomainSize = Int.MAX_VALUE
-                var bestDegree = -1f
+                val candidatesWithPlacements = mutableListOf<Pair<WordClue, List<CandidatePlacement>>>()
 
                 for (candidate in state.unplaced) {
                     val placements = findLegalPlacements(
@@ -341,33 +359,53 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                         maxSideLimit = maxSideLimit
                     )
 
-                    if (placements.isEmpty()) {
-                        // Se una parola non ha domini validi, questo ramo è senza uscita
-                        chosenWord = null
-                        break
-                    }
-
-                    val degree = potentialMap[candidate] ?: 0f
-
-                    if (placements.size < minDomainSize ||
-                        (placements.size == minDomainSize && degree > bestDegree)
-                    ) {
-                        minDomainSize = placements.size
-                        chosenPlacements = placements
-                        chosenWord = candidate
-                        bestDegree = degree
+                    if (placements.isNotEmpty()) {
+                        candidatesWithPlacements += candidate to placements
                     }
                 }
 
-                if (chosenWord == null) {
-                    // Ramo non completabile, proseguiamo con gli altri stati del beam
+                if (candidatesWithPlacements.isEmpty()) {
+                    // Solo qui il ramo è bloccato perché nessuna parola rimasta può agganciarsi
                     continue
                 }
 
-                val nextUnplaced = state.unplaced.filter { it.word != chosenWord.word }
+                // Cerca posizionamenti con 2 o più incroci tra TUTTE le parole candidate
+                val multiIntersectionMoves = mutableListOf<Pair<WordClue, CandidatePlacement>>()
+                for ((candWord, placements) in candidatesWithPlacements) {
+                    for (p in placements) {
+                        if (p.intersections >= 2) {
+                            multiIntersectionMoves += candWord to p
+                        }
+                    }
+                }
+
+                // Parola MRV (quella con minor numero di posizionamenti ammissibili per completezza CSP)
+                val mrvPair = candidatesWithPlacements.minWith(
+                    compareBy<Pair<WordClue, List<CandidatePlacement>>> { it.second.size }
+                        .thenByDescending { potentialMap[it.first] ?: 0f }
+                        .thenByDescending { it.first.word.length }
+                )
+
+                // Raccoglie le migliori mosse:
+                // 1) Priorità assoluta alle mosse che creano 2+ incroci chiudendo cicli e densità
+                // 2) Mantiene anche i migliori posizionamenti della parola MRV per evitare blocchi
+                val movesToExpand = mutableListOf<Pair<WordClue, CandidatePlacement>>()
+                if (multiIntersectionMoves.isNotEmpty()) {
+                    movesToExpand += multiIntersectionMoves
+                        .sortedByDescending { it.second.stepScore }
+                        .take(12)
+                }
+                movesToExpand += mrvPair.second
+                    .sortedByDescending { it.stepScore }
+                    .take(4)
+                    .map { mrvPair.first to it }
+
+                val distinctMoves = movesToExpand.distinctBy { (w, p) ->
+                    "${w.word}:${p.row}:${p.col}:${p.direction}"
+                }
 
                 // Espansione dei candidati per questo stato
-                for (p in chosenPlacements) {
+                for ((chosenWord, p) in distinctMoves) {
                     val newMap = HashMap(state.cellMap)
                     chosenWord.word.forEachIndexed { i, ch ->
                         val r = if (p.direction == Direction.ACROSS) p.row else p.row + i
@@ -378,6 +416,7 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                     val newPlaced = ArrayList(state.placed)
                     newPlaced.add(PlacedWord(chosenWord.word, chosenWord.clue, p.row, p.col, p.direction))
 
+                    val nextUnplaced = state.unplaced.filter { it.word != chosenWord.word }
                     val accumulatedScore = state.score + p.stepScore
                     val totalIntersections = state.intersections + p.intersections
 
@@ -395,9 +434,11 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
             if (nextCandidates.isEmpty()) break
 
             // BEAM PRUNING: Conserva solo i migliori K stati ordinati per punteggio parziale
-            // Introduciamo una minima componente stocastica per diversità tra rami
+            // Introduciamo una minima componente stocastica per diversità tra rami valutata una volta per stato
             beam = nextCandidates
-                .sortedByDescending { it.score + random.nextFloat() * 15f }
+                .map { it to (it.score + random.nextFloat() * 20f) }
+                .sortedByDescending { it.second }
+                .map { it.first }
                 .take(beamWidth)
         }
 
@@ -420,7 +461,7 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         maxSideLimit: Int
     ): List<CandidatePlacement> {
         val out = mutableListOf<CandidatePlacement>()
-        val visited = HashSet<Long>()
+        val visited = HashSet<GridPosKey>()
 
         for (existing in placed) {
             val existCells = existing.cells()
@@ -434,9 +475,7 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                     val startRow = if (newDir == Direction.ACROSS) cell.first else cell.first - idxN
                     val startCol = if (newDir == Direction.ACROSS) cell.second - idxN else cell.second
 
-                    val stateKey = (startRow.toLong() shl 36) or
-                            ((startCol.toLong() and 0xFFFFFFL) shl 1) or
-                            (if (newDir == Direction.ACROSS) 1L else 0L)
+                    val stateKey = GridPosKey(startRow, startCol, newDir)
 
                     if (!visited.add(stateKey)) continue
 
@@ -447,7 +486,8 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                         row = startRow,
                         col = startCol,
                         dir = newDir,
-                        maxSideLimit = maxSideLimit
+                        maxSideLimit = maxSideLimit,
+                        placedCount = placed.size
                     )
                     if (candidate != null) {
                         out += candidate
@@ -468,7 +508,8 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         row: Int,
         col: Int,
         dir: Direction,
-        maxSideLimit: Int
+        maxSideLimit: Int,
+        placedCount: Int
     ): CandidatePlacement? {
         // Cella subito prima e subito dopo devono essere vuote
         val beforeR = if (dir == Direction.ACROSS) row else row - 1
@@ -516,8 +557,9 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         val shorter = max(1, min(newRows, newCols)).toFloat()
         val ratio = longer / shorter
 
-        // Scarta forme sproporzionate
-        if (ratio > 1.80f) return null
+        // Scarta forme sproporzionate (più tollerante all'inizio per consentire incroci su parole lunghe)
+        val maxAllowedRatio = if (placedCount <= 4) 2.6f else 2.1f
+        if (ratio > maxAllowedRatio) return null
 
         val currentArea = bbox.area
         val newArea = newRows * newCols
@@ -525,21 +567,22 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         val deltaPerimeter = (newRows + newCols) - (bbox.rows + bbox.cols)
 
         // Punteggio Euristico CSP:
-        // + molti incroci
+        // + bonus massiccio per incroci multipli (favorisce chiusura di cicli, anelli e densità)
         // + bonus spazio interno (zero espansione griglia)
         // - penalità espansione area e perimetro
         // - penalità distanza dal baricentro
         // - penalità allungamento forma
-        val intersectionPoints = when (intersections) {
-            1 -> 120f
-            2 -> 600f
-            3 -> 1800f
-            else -> 3000f
+        val intersectionPoints = when {
+            intersections >= 4 -> 5500f + (intersections - 4) * 1500f
+            intersections == 3 -> 3600f
+            intersections == 2 -> 1700f
+            intersections == 1 -> if (placedCount <= 2) 150f else 0f
+            else -> -1000f
         }
 
-        val interiorFitBonus = if (deltaArea == 0) 450f else 0f
-        val expansionPenalty = (deltaArea * 6f) + (deltaPerimeter * 16f)
-        val aspectPenalty = ((ratio - 1.0f) * 350f) + (abs(newRows - newCols) * 10f)
+        val interiorFitBonus = if (deltaArea == 0) 750f else 0f
+        val expansionPenalty = (deltaArea * 6f) + (deltaPerimeter * 15f)
+        val aspectPenalty = ((ratio - 1.0f) * 250f) + (abs(newRows - newCols) * 10f)
 
         // Calcolo vicinanza al baricentro attuale
         val centerR = (bbox.minR + bbox.maxR) / 2f
@@ -622,9 +665,7 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
             coroutineContext.ensureActive()
         }
 
-        var bestWord: WordClue? = null
-        var bestCandidates: List<CandidatePlacement> = emptyList()
-        var minCandidates = Int.MAX_VALUE
+        val candidatesWithPlacements = mutableListOf<Pair<WordClue, List<CandidatePlacement>>>()
 
         for (candidate in unplaced) {
             val placements = findLegalPlacements(
@@ -634,17 +675,32 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
                 word = candidate.word,
                 maxSideLimit = maxSideLimit
             )
-            if (placements.isEmpty()) return false
-            if (placements.size < minCandidates) {
-                minCandidates = placements.size
-                bestCandidates = placements
-                bestWord = candidate
-                if (minCandidates == 1) break
+            if (placements.isNotEmpty()) {
+                candidatesWithPlacements += candidate to placements
             }
         }
 
-        val chosenWord = bestWord ?: return false
-        val sortedCandidates = bestCandidates.sortedByDescending { it.stepScore + random.nextInt(-20, 21) }
+        if (candidatesWithPlacements.isEmpty()) return false
+
+        // Verifica se ci sono parole in grado di realizzare 2 o più incroci contemporanei
+        val maxIntersections = candidatesWithPlacements.maxOf { pair ->
+            pair.second.maxOf { it.intersections }
+        }
+
+        val (chosenWord, chosenPlacements) = if (maxIntersections >= 2) {
+            // Priorità a parole che chiudono maglie dense, tie-break con MRV
+            candidatesWithPlacements
+                .filter { pair -> pair.second.any { it.intersections == maxIntersections } }
+                .minByOrNull { it.second.size }!!
+        } else {
+            // Normale MRV per evitare di rimanere bloccati
+            candidatesWithPlacements.minByOrNull { it.second.size }!!
+        }
+
+        val sortedCandidates = chosenPlacements
+            .map { it to (it.stepScore + random.nextInt(-25, 26)) }
+            .sortedByDescending { it.second }
+            .map { it.first }
         val nextUnplaced = unplaced.filter { it.word != chosenWord.word }
 
         for (p in sortedCandidates) {

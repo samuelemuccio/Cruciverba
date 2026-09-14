@@ -246,9 +246,9 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
          }
 
          // 2. FASE 1: BEAM SEARCH AD ALTA DENSITÀ CON SELEZIONE ANCORAGGIO
-         // Se c'è la parola misteriosa, essa diventa l'ancoraggio obbligatorio al centro
+         // Esplora sia l'ancoraggio diretto che ancoraggi su parole ad alto potenziale
          val candidateAnchors = if (normMystery != null) {
-             listOf(normMystery)
+             listOf(normMystery) + wordsByPotential.filter { it.word != normMystery.word }.take(min(3, wordsByPotential.size))
          } else {
              wordsByPotential.take(min(8, wordsByPotential.size))
          }
@@ -288,7 +288,7 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
              coroutineContext.ensureActive()
              restarts++
 
-             val anchor = if (normMystery != null) {
+             val anchor = if (normMystery != null && random.nextFloat() < 0.60f) {
                  normMystery
              } else {
                  wordsByPotential.take(min(7, wordsByPotential.size)).random(random)
@@ -353,13 +353,27 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
              )
          }
 
-         // Ordina con preferenza per numero di parole posizionate, incroci della parola misteriosa ed estetica
+         // Ordina con preferenza per numero di parole posizionate, bilanciamento incroci ed estetica a griglia reale
          if (normMystery != null) {
              scoredReports
                  .sortedWith(
                      compareByDescending<BuildReport> { it.placedWords.size }
-                         .thenByDescending { it.mysteryInfo?.revealedCount ?: 0 }
-                         .thenByDescending { it.aestheticScore?.totalScore ?: Float.NEGATIVE_INFINITY }
+                         .thenByDescending { report ->
+                             val info = report.mysteryInfo
+                             val total = max(1, info?.totalLetters ?: 1)
+                             val rev = info?.revealedCount ?: 0
+                             val idealMin = max(2, (total * 0.20f).toInt())
+                             val idealMax = max(3, (total * 0.50f).toInt())
+                             // Bilanciamento ottimale: parte delle lettere incrociate (es. 3-6 lettere su 14)
+                             // e le altre dedotte, premiando una griglia a cruciverba reale intrecciata anziché a pettine
+                             val balanceBonus = when {
+                                 rev in idealMin..idealMax -> 500f
+                                 rev > 0 && rev <= idealMax + 2 -> 250f
+                                 rev > (total * 0.70f) -> -350f // Troppe parole sulla parola cardine (effetto pettine sgradito)
+                                 else -> -100f
+                             }
+                             (report.aestheticScore?.totalScore ?: 0f) + balanceBonus
+                         }
                  )
                  .take(maxSolutions)
          } else {
@@ -695,24 +709,45 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
         val distToCenter = sqrt((wordMidR - centerR) * (wordMidR - centerR) + (wordMidC - centerC) * (wordMidC - centerC))
         val centerPenalty = distToCenter * 12f
 
-        // Bonus sostanziale per chi incrocia la parola cardine misteriosa
-        val anchorBonus = if (anchorBonusWord != null && placed.isNotEmpty()) {
+        // Bonus per chi incrocia la parola cardine misteriosa (con tetto ottimale per evitare l'effetto pettine)
+        var anchorCrosses = 0
+        var anchorPlacedRef: PlacedWord? = null
+        if (anchorBonusWord != null && placed.isNotEmpty()) {
             val anchorPlaced = placed.firstOrNull { it.word == anchorBonusWord }
             if (anchorPlaced != null) {
+                anchorPlacedRef = anchorPlaced
                 val aCells = anchorPlaced.cells()
-                var anchorCrosses = 0
                 for (i in word.indices) {
                     val r = if (dir == Direction.ACROSS) row else row + i
                     val c = if (dir == Direction.ACROSS) col + i else col
-                    if (anchorPlaced.cells().contains(r to c)) {
+                    if (aCells.contains(r to c)) {
                         anchorCrosses++
                     }
                 }
-                anchorCrosses * 2400f
-            } else 0f
+            }
+        }
+
+        val anchorBonus = if (anchorPlacedRef != null && anchorCrosses > 0) {
+            val existingAnchorCrosses = placed.count { pw ->
+                pw != anchorPlacedRef && pw.cells().any { anchorPlacedRef.cells().contains(it) }
+            }
+            // Target ideale: circa il 35-45% delle lettere della parola cardine incrociate direttamente
+            val targetWords = max(2, min(5, (anchorPlacedRef.word.length * 0.38f).toInt()))
+            if (existingAnchorCrosses < targetWords) {
+                anchorCrosses * 350f
+            } else {
+                // Raggiunta la soglia ideale, riduci il bonus così le altre parole si incrociano tra loro
+                anchorCrosses * 30f
+            }
         } else 0f
 
-        val stepScore = intersectionPoints + interiorFitBonus + anchorBonus - expansionPenalty - aspectPenalty - centerPenalty
+        // Bonus griglia 2D: premia fortemente le parole che corrono parallele alla parola cardine
+        // e incrociano le parole perpendicolari, trasformando il pettine in un vero cruciverba
+        val gridWeaveBonus = if (anchorPlacedRef != null && dir == anchorPlacedRef.direction && intersections >= 1) {
+            450f
+        } else 0f
+
+        val stepScore = intersectionPoints + interiorFitBonus + anchorBonus + gridWeaveBonus - expansionPenalty - aspectPenalty - centerPenalty
 
         return CandidatePlacement(
             row = row,

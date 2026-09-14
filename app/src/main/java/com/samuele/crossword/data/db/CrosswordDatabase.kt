@@ -22,7 +22,7 @@ abstract class CrosswordDatabase : RoomDatabase() {
                     context.applicationContext,
                     CrosswordDatabase::class.java,
                     "crossword.db"
-                ).fallbackToDestructiveMigration().build().also { INSTANCE = it }
+                ).fallbackToDestructiveMigration(dropAllTables = true).build().also { INSTANCE = it }
             }
     }
 }

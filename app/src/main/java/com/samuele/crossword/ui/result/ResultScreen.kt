@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -736,13 +737,16 @@ fun MysteryWordEnigmaCard(
                     }
                 }
 
+                val rawWords = info.rawDisplayWord.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+                val wordCountLabel = if (rawWords.size > 1) " (${rawWords.size} parole)" else ""
+
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Color(0xFFF59E0B).copy(alpha = 0.18f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f))
                 ) {
                     Text(
-                        text = "${info.revealedCount}/${info.totalLetters} incrociate",
+                        text = "${info.totalLetters} lettere$wordCountLabel • ${info.revealedCount} incrociate",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFFBBF24),
@@ -751,68 +755,98 @@ fun MysteryWordEnigmaCard(
                 }
             }
 
-            // Barra tessere geometriche squadrate (90° netti, fedeli all'estetica quadrata del cruciverba)
+            // Barra tessere geometriche squadrate (90° netti, scorrevole per qualsiasi lunghezza es. DEMON SALVATORE)
+            val scrollState = rememberScrollState()
+            val rawWords = info.rawDisplayWord.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+            val wordStartIndices = remember(info.rawDisplayWord) {
+                val set = mutableSetOf<Int>()
+                if (rawWords.size > 1) {
+                    var cum = 0
+                    for (i in 0 until rawWords.size - 1) {
+                        cum += rawWords[i].filter { it in 'A'..'Z' || it in 'a'..'z' }.length
+                        set.add(cum)
+                    }
+                }
+                set
+            }
+
+            val tileSize = if (info.totalLetters > 13) 30.dp else if (info.totalLetters > 9) 34.dp else 38.dp
+            val tileSpacing = if (info.totalLetters > 13) 4.dp else 6.dp
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(scrollState)
                     .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = if (info.totalLetters <= 7) Arrangement.Center else Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    info.word.forEachIndexed { index, char ->
-                        val isIntersected = info.intersectedIndices.contains(index)
-                        val shouldShowLetter = isRevealed || isIntersected
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                info.word.forEachIndexed { index, char ->
+                    if (wordStartIndices.contains(index)) {
+                        // Separatore grafico tra parole per nomi composti (es. tra DEMON e SALVATORE)
+                        Box(
+                            modifier = Modifier
+                                .width(14.dp)
+                                .height(tileSize),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = when {
-                                    isIntersected -> Color(0xFFFFFBEB)
-                                    isRevealed -> Color(0xFF1E2234)
-                                    else -> Color(0xFF12141F)
-                                },
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.5.dp,
-                                    if (isIntersected) Color(0xFFD97706) else Color.White.copy(alpha = 0.2f)
-                                ),
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    if (shouldShowLetter) {
-                                        Text(
-                                            text = char.toString(),
-                                            style = MaterialTheme.typography.titleMedium.copy(
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = if (isIntersected) Color(0xFF92400E) else Color.White
-                                            )
-                                        )
-                                    } else {
-                                        Text(
-                                            text = "?",
-                                            style = MaterialTheme.typography.titleMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = SlateTextSecondary.copy(alpha = 0.6f)
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Micro-etichetta di stato
-                            Text(
-                                text = if (isIntersected) "incrocio" else "deduzione",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                                color = if (isIntersected) Color(0xFFFBBF24) else SlateTextSecondary.copy(alpha = 0.7f),
-                                fontWeight = if (isIntersected) FontWeight.Bold else FontWeight.Normal
+                            Box(
+                                modifier = Modifier
+                                    .size(5.dp)
+                                    .background(Color(0xFFF59E0B).copy(alpha = 0.5f), CircleShape)
                             )
                         }
+                    }
+
+                    val isIntersected = info.intersectedIndices.contains(index)
+                    val shouldShowLetter = isRevealed || isIntersected
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = (tileSpacing / 2))
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = when {
+                                isIntersected -> Color(0xFFFFFBEB)
+                                isRevealed -> Color(0xFF1E2234)
+                                else -> Color(0xFF12141F)
+                            },
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.5.dp,
+                                if (isIntersected) Color(0xFFD97706) else Color.White.copy(alpha = 0.2f)
+                            ),
+                            modifier = Modifier.size(tileSize)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                if (shouldShowLetter) {
+                                    Text(
+                                        text = char.toString(),
+                                        style = (if (tileSize < 33.dp) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium).copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isIntersected) Color(0xFF92400E) else Color.White
+                                        )
+                                    )
+                                } else {
+                                    Text(
+                                        text = "?",
+                                        style = (if (tileSize < 33.dp) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium).copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = SlateTextSecondary.copy(alpha = 0.6f)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        // Micro-etichetta di stato
+                        Text(
+                            text = if (isIntersected) "incrocio" else "deduzione",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                            color = if (isIntersected) Color(0xFFFBBF24) else SlateTextSecondary.copy(alpha = 0.7f),
+                            fontWeight = if (isIntersected) FontWeight.Bold else FontWeight.Normal
+                        )
                     }
                 }
             }

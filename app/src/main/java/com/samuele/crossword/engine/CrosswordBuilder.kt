@@ -96,7 +96,8 @@ data class BuiltCrossword(
                     slotNumber = mSlot?.number,
                     direction = mPlaced.direction,
                     cells = mCells,
-                    intersectedIndices = intersected
+                    intersectedIndices = intersected,
+                    rawDisplayWord = mysteryWord.word
                 )
             } else null
         } else null
@@ -225,14 +226,15 @@ class CrosswordBuilder(private val random: Random = Random.Default) {
 
          val maxWordLen = unique.maxOf { it.word.length }
          val totalChars = unique.sumOf { it.word.length }
-         val tightLimit = max(11, max(maxWordLen + 2, (sqrt(totalChars.toDouble()) * 1.50).toInt()))
-         val standardLimit = max(13, max(maxWordLen + 4, (sqrt(totalChars.toDouble()) * 1.88).toInt()))
+         val tightLimit = max(11, max(maxWordLen + 3, (sqrt(totalChars.toDouble()) * 1.55).toInt()))
+         val standardLimit = max(13, max(maxWordLen + 6, (sqrt(totalChars.toDouble()) * 2.00).toInt()))
 
          val completedCrosswords = mutableListOf<BuiltCrossword>()
          val signatures = HashSet<String>()
 
          fun addSolution(sol: BuiltCrossword, minSize: Int = if (requireAllWords) totalWords else 3) {
-             if (sol.placed.size >= minSize && sol.aspectRatioFactor <= 2.15f) {
+             val maxAspect = if (normMystery != null) 3.85f else 2.15f
+             if (sol.placed.size >= minSize && sol.aspectRatioFactor <= maxAspect) {
                  if (normMystery == null || sol.placed.any { it.word == normMystery.word }) {
                      val sig = signature(sol)
                      if (sig !in signatures) {

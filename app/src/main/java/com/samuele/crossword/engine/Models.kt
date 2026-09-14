@@ -39,7 +39,8 @@ data class MysteryWordInfo(
     val slotNumber: Int? = null,
     val direction: Direction = Direction.ACROSS,
     val cells: List<Pair<Int, Int>> = emptyList(),
-    val intersectedIndices: List<Int> = emptyList() // indici delle lettere (0..length-1) incrociate con altre parole
+    val intersectedIndices: List<Int> = emptyList(), // indici delle lettere (0..length-1) incrociate con altre parole
+    val rawDisplayWord: String = word
 ) {
     val totalLetters: Int get() = word.length
     val revealedCount: Int get() = intersectedIndices.size

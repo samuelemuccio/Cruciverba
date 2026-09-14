@@ -13,9 +13,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -976,7 +978,7 @@ private fun IosMysteryWordCard(
                     modifier = Modifier.padding(top = 4.dp)
                 ) {
                     Text(
-                        text = "Inserisci la parola cardine: lo schema si comporrà incrociando le sue lettere. Le lettere che non si incrociano dovranno essere dedotte con l'indizio!",
+                        text = "Inserisci la parola o nome cardine (senza limite di lunghezza, es. DEMON SALVATORE): lo schema si comporrà incrociando le sue lettere. Le lettere che non si incrociano dovranno essere dedotte con l'indizio!",
                         style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
                         color = Color.White.copy(alpha = 0.75f)
                     )
@@ -1012,7 +1014,7 @@ private fun IosMysteryWordCard(
                                 Box(contentAlignment = Alignment.CenterStart) {
                                     if (mysteryWord.isEmpty()) {
                                         Text(
-                                            "Parola segreta (es. ITALIA, AMORE, ESTATE)",
+                                            "Parola o nome segreto (es. DEMON SALVATORE, ITALIA)",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = SlateTextSecondary.copy(alpha = 0.5f)
                                         )
@@ -1061,38 +1063,80 @@ private fun IosMysteryWordCard(
 
                     // Anteprima geometrica netta e squadrata delle lettere della parola misteriosa
                     if (mysteryWord.isNotBlank()) {
-                        Row(
+                        val letterCount = mysteryWord.count { it in 'A'..'Z' }
+                        val rawWords = mysteryWord.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+                        val scrollState = rememberScrollState()
+
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(
-                                text = "Composizione:",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SlateTextSecondary,
-                                modifier = Modifier.padding(end = 8.dp)
-                            )
                             Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Composizione tessere:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SlateTextSecondary
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFF59E0B).copy(alpha = 0.16f),
+                                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f))
+                                ) {
+                                    Text(
+                                        text = "${letterCount} lettere" + if (rawWords.size > 1) " • ${rawWords.size} parole" else "",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFBBF24),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // Riga tessere orizzontale scorrevole (supporta qualsiasi lunghezza senza tagli)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(scrollState)
+                                    .padding(vertical = 2.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 mysteryWord.forEach { char ->
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = Color(0xFFF59E0B).copy(alpha = 0.18f),
-                                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.7f)),
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = char.toString(),
-                                                style = MaterialTheme.typography.labelLarge.copy(
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color(0xFFFBBF24)
-                                                )
+                                    if (char == ' ') {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(14.dp)
+                                                .height(28.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(5.dp)
+                                                    .background(Color(0xFFF59E0B).copy(alpha = 0.5f), CircleShape)
                                             )
+                                        }
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFFF59E0B).copy(alpha = 0.18f),
+                                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.7f)),
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = char.toString(),
+                                                    style = MaterialTheme.typography.labelLarge.copy(
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFFFBBF24)
+                                                    )
+                                                )
+                                            }
                                         }
                                     }
                                 }

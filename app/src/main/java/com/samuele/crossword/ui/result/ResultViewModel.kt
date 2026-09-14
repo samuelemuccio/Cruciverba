@@ -43,7 +43,11 @@ class ResultViewModel(
     fun generate(words: List<WordClue>, mysteryWord: WordClue? = null) {
         viewModelScope.launch {
             _state.value = State(loading = true, theme = _state.value.theme)
-            val reports = builder.buildVariationsStrict(words, mysteryWord = mysteryWord, maxSolutions = 30, requireAllWords = true)
+            var reports = builder.buildVariationsStrict(words, mysteryWord = mysteryWord, maxSolutions = 30, requireAllWords = true)
+            if (reports.isEmpty() && words.size > 3) {
+                // Fallback: se non tutte le parole collaterali si incrociano, genera comunque lo schema con la parola cardine e il massimo numero di incroci
+                reports = builder.buildVariationsStrict(words, mysteryWord = mysteryWord, maxSolutions = 30, requireAllWords = false)
+            }
             val validResults = reports.mapNotNull { it.result }
 
             _state.value = if (validResults.isEmpty()) {

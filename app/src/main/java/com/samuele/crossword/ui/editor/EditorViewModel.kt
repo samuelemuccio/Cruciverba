@@ -68,7 +68,8 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
     }
 
     fun onDraftWordChange(s: String) = _state.update {
-        it.copy(draftWord = WordClue.normalize(s))
+        val filtered = s.uppercase().filter { it in 'A'..'Z' || it == ' ' }
+        it.copy(draftWord = filtered)
     }
 
     fun onDraftClueChange(s: String) = _state.update {
@@ -80,7 +81,8 @@ class EditorViewModel(private val repo: WordListRepository) : ViewModel() {
     }
 
     fun onMysteryWordChange(s: String) = _state.update {
-        it.copy(mysteryWord = WordClue.normalize(s))
+        val filtered = s.uppercase().filter { it in 'A'..'Z' || it == ' ' }
+        it.copy(mysteryWord = filtered)
     }
 
     fun onMysteryClueChange(s: String) = _state.update {

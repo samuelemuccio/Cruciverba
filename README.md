@@ -1,11 +1,12 @@
 # 🧩 Cruciverba
 
 <p align="center">
-  <strong>Crea cruciverba personalizzati, esplora diversi schemi ed esportali in pochi tocchi.</strong>
-  <br><br>
-  <a href="https://github.com/samuelemuccio/Cruciverba/actions/workflows/build-apk.yml">
-    <img src="https://img.shields.io/badge/📲_SCARICA_APK-7C5CFC?style=for-the-badge&logo=android&logoColor=white" alt="Scarica l'APK Android">
+  <a href="https://github.com/samuelemuccio/Cruciverba/actions/runs/39816839022/artifacts/12442104377">
+    <img src="https://img.shields.io/badge/📲_SCARICA_APK-7C5CFC?style=for-the-badge&logo=android&logoColor=white" alt="Scarica APK Android">
   </a>
+  <br>
+  <sub>Scarica l'artifact della build Android da GitHub Actions.</sub>
+</p>
   <a href="https://github.com/samuelemuccio/Cruciverba/actions/workflows/build-apk.yml">
     <img src="https://github.com/samuelemuccio/Cruciverba/actions/workflows/build-apk.yml/badge.svg" alt="Build Android APK">
   </a>
